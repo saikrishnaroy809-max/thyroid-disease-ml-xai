@@ -20,7 +20,7 @@ from database import save_prediction
 app = FastAPI(
     title="Thyroid Disease Prediction API",
     description="ML-based thyroid prediction with SHAP, DiCE and Admin Dashboard",
-    version="3.0.0"
+    version="3.1.0"
 )
 
 
@@ -50,7 +50,6 @@ app.include_router(auth_router)
 
 model = joblib.load("thyroid_xgboost_model.pkl")
 
-# SHAP explainer
 explainer = shap.TreeExplainer(model)
 
 
@@ -215,14 +214,15 @@ def root():
 
     return {
         "message": "Thyroid Disease Prediction API is running",
-        "version": "3.0.0",
+        "version": "3.1.0",
         "features": [
             "Prediction",
             "SHAP",
             "DiCE",
             "User Authentication",
             "User History",
-            "Admin Dataset Upload"
+            "Admin Dataset Upload",
+            "Admin Prediction History"
         ]
     }
 
@@ -243,7 +243,8 @@ def health():
         ],
         "authentication": True,
         "user_history": True,
-        "admin_dataset_upload": True
+        "admin_dataset_upload": True,
+        "admin_prediction_history": True
     }
 
 
@@ -253,10 +254,6 @@ def health():
 
 @app.post("/predict")
 def predict(data: dict):
-
-    # ----------------------------------------------
-    # Check missing features
-    # ----------------------------------------------
 
     missing = [
         f
@@ -272,28 +269,32 @@ def predict(data: dict):
         )
 
 
-    # ----------------------------------------------
-    # Create input dataframe
-    # ----------------------------------------------
-
     input_df = pd.DataFrame(
         [[data[f] for f in FEATURES]],
         columns=FEATURES
     )
 
 
-    # ----------------------------------------------
-    # Prediction
-    # ----------------------------------------------
+    # Make sure model receives numeric values
+    for column in FEATURES:
+        input_df[column] = pd.to_numeric(
+            input_df[column],
+            errors="coerce"
+        )
+
+
+    if input_df.isna().any().any():
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid or missing numeric values in prediction input."
+        )
+
 
     prediction = int(
         model.predict(input_df)[0]
     )
 
-
-    # ----------------------------------------------
-    # Probabilities
-    # ----------------------------------------------
 
     probabilities = model.predict_proba(
         input_df
@@ -309,16 +310,12 @@ def predict(data: dict):
     )
 
 
-    # ----------------------------------------------
-    # Optional user ID
-    # ----------------------------------------------
-
     user_id = data.get("user_id")
 
 
-    # ----------------------------------------------
-    # Save prediction history
-    # ----------------------------------------------
+    # ==================================================
+    # SAVE USER PREDICTION HISTORY
+    # ==================================================
 
     if user_id is not None:
 
@@ -346,10 +343,6 @@ def predict(data: dict):
                 str(e)
             )
 
-
-    # ----------------------------------------------
-    # Result
-    # ----------------------------------------------
 
     return {
 
@@ -398,9 +391,21 @@ def explain(data: dict):
     )
 
 
-    # ----------------------------------------------
-    # SHAP
-    # ----------------------------------------------
+    for column in FEATURES:
+
+        input_df[column] = pd.to_numeric(
+            input_df[column],
+            errors="coerce"
+        )
+
+
+    if input_df.isna().any().any():
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid numeric values supplied."
+        )
+
 
     shap_result = explainer(
         input_df
@@ -439,10 +444,6 @@ def explain(data: dict):
         })
 
 
-    # ----------------------------------------------
-    # Sort by importance
-    # ----------------------------------------------
-
     explanation.sort(
         key=lambda x:
             abs(x["shap_value"]),
@@ -478,44 +479,51 @@ def counterfactual(data: dict):
         )
 
 
-    # ----------------------------------------------
-    # Query instance
-    # ----------------------------------------------
-
     query_instance = pd.DataFrame(
         [[data[f] for f in FEATURES]],
         columns=FEATURES
     )
 
 
-    # ----------------------------------------------
-    # DiCE categorical values
-    # ----------------------------------------------
+    # ==================================================
+    # DICE CATEGORICAL VALUES
+    # ==================================================
 
     for col in CATEGORICAL_FEATURES:
 
         query_instance[col] = (
-            query_instance[col]
+            pd.to_numeric(
+                query_instance[col],
+                errors="coerce"
+            )
+            .fillna(0)
             .astype(int)
             .astype(str)
         )
 
 
-    # ----------------------------------------------
-    # DiCE continuous values
-    # ----------------------------------------------
+    # ==================================================
+    # DICE CONTINUOUS VALUES
+    # ==================================================
 
     for col in CONTINUOUS_FEATURES:
 
         query_instance[col] = (
-            query_instance[col]
+            pd.to_numeric(
+                query_instance[col],
+                errors="coerce"
+            )
             .astype(float)
         )
 
 
-    # ----------------------------------------------
-    # Generate counterfactuals
-    # ----------------------------------------------
+    if query_instance.isna().any().any():
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid values supplied for counterfactual generation."
+        )
+
 
     try:
 
@@ -560,7 +568,7 @@ def counterfactual(data: dict):
 
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=f"Counterfactual generation failed: {str(e)}"
         )
 
 
@@ -573,10 +581,6 @@ async def upload_dataset(
     file: UploadFile = File(...)
 ):
 
-    # ----------------------------------------------
-    # Check file
-    # ----------------------------------------------
-
     if not file.filename:
 
         raise HTTPException(
@@ -584,10 +588,6 @@ async def upload_dataset(
             detail="No file selected"
         )
 
-
-    # ----------------------------------------------
-    # Only CSV allowed
-    # ----------------------------------------------
 
     if not file.filename.lower().endswith(".csv"):
 
@@ -597,19 +597,11 @@ async def upload_dataset(
         )
 
 
-    # ----------------------------------------------
-    # Create uploads directory
-    # ----------------------------------------------
-
     os.makedirs(
         "uploads",
         exist_ok=True
     )
 
-
-    # ----------------------------------------------
-    # Save uploaded file
-    # ----------------------------------------------
 
     file_path = os.path.join(
         "uploads",
@@ -630,18 +622,10 @@ async def upload_dataset(
             )
 
 
-        # ------------------------------------------
-        # Read uploaded dataset
-        # ------------------------------------------
-
         df = pd.read_csv(
             file_path
         )
 
-
-        # ------------------------------------------
-        # Return dataset information
-        # ------------------------------------------
 
         return {
 
@@ -668,6 +652,90 @@ async def upload_dataset(
             status_code=500,
             detail=f"Dataset upload failed: {str(e)}"
         )
+
+
+# ==================================================
+# ADMIN - ALL PREDICTION HISTORY
+# ==================================================
+
+@app.get("/admin/history")
+def admin_history():
+
+    from database import get_connection
+
+    connection = get_connection()
+
+    try:
+
+        cursor = connection.cursor()
+
+
+        cursor.execute("""
+            SELECT
+                prediction_history.id,
+                prediction_history.user_id,
+                users.username,
+                users.email,
+                prediction_history.prediction,
+                prediction_history.probability_class_0,
+                prediction_history.probability_class_1,
+                prediction_history.input_data,
+                prediction_history.created_at
+
+            FROM prediction_history
+
+            INNER JOIN users
+            ON prediction_history.user_id = users.id
+
+            ORDER BY prediction_history.created_at DESC
+        """)
+
+
+        records = cursor.fetchall()
+
+
+        history = []
+
+
+        for record in records:
+
+            item = dict(record)
+
+
+            try:
+
+                item["input_data"] = json.loads(
+                    item["input_data"]
+                )
+
+            except Exception:
+
+                pass
+
+
+            history.append(item)
+
+
+        return {
+
+            "history": history,
+
+            "total": len(history)
+
+        }
+
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to load admin history: {str(e)}"
+        )
+
+
+    finally:
+
+        connection.close()
 
 
 # ==================================================
