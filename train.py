@@ -1,4 +1,3 @@
-
 import pandas as pd
 import joblib
 
@@ -88,7 +87,7 @@ X = df[FEATURES].copy()
 y = df[TARGET].copy()
 
 
-# Convert everything to numeric
+# Convert features to numeric
 
 for column in FEATURES:
     X[column] = pd.to_numeric(
@@ -128,7 +127,6 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=y
 )
 
-
 print("Training rows:", len(X_train))
 print("Testing rows:", len(X_test))
 
@@ -137,4 +135,79 @@ print("Testing rows:", len(X_test))
 # 7. TRAIN XGBOOST
 # ==============================
 
-model = XGBClassifier
+model = XGBClassifier(
+    n_estimators=100,
+    max_depth=4,
+    learning_rate=0.05,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    random_state=42,
+    eval_metric="logloss",
+    n_jobs=1,
+    tree_method="hist"
+)
+
+print("Training XGBoost...")
+print("Please wait...")
+
+
+model.fit(
+    X_train,
+    y_train
+)
+
+
+print("Training completed successfully!")
+
+
+# ==============================
+# 8. PREDICTION
+# ==============================
+
+y_pred = model.predict(X_test)
+
+
+# ==============================
+# 9. TEST ACCURACY
+# ==============================
+
+accuracy = accuracy_score(
+    y_test,
+    y_pred
+)
+
+print()
+print("==============================")
+print("XGBOOST TEST ACCURACY")
+print("==============================")
+print(f"{accuracy * 100:.2f}%")
+print("==============================")
+
+
+# ==============================
+# 10. CLASSIFICATION REPORT
+# ==============================
+
+print()
+print("Classification Report:")
+
+print(
+    classification_report(
+        y_test,
+        y_pred
+    )
+)
+
+
+# ==============================
+# 11. SAVE MODEL
+# ==============================
+
+joblib.dump(
+    model,
+    "thyroid_xgboost_model.pkl"
+)
+
+print()
+print("Model saved successfully:")
+print("thyroid_xgboost_model.pkl")
