@@ -1,743 +1,745 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-
-import joblib
-import pandas as pd
-import shap
-import dice_ml
-import json
 import os
-import shutil
+import io
+import warnings
+import numpy as np
+import pandas as pd
 
-from auth import router as auth_router
-from database import save_prediction
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+from sklearn.model_selection import train_test_split
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+
+from sklearn.metrics import accuracy_score
+
+warnings.filterwarnings("ignore")
+
+app = Flask(__name__)
+CORS(app)
+
+# --------------------------------------------------
+# GLOBAL VARIABLES
+# --------------------------------------------------
+
+DATASET = None
+DATASET_NAME = None
+TARGET_COLUMN = None
+
+FEATURE_COLUMNS = []
+FEATURE_INFO = []
+
+MODELS = {}
+MODEL_RESULTS = {}
+
+X_TRAIN = None
+X_TEST = None
+Y_TRAIN = None
+Y_TEST = None
 
 
-# ==================================================
-# FASTAPI APP
-# ==================================================
+# --------------------------------------------------
+# TARGET DETECTION
+# --------------------------------------------------
 
-app = FastAPI(
-    title="Thyroid Disease Prediction API",
-    description="ML-based thyroid prediction with SHAP, DiCE and Admin Dashboard",
-    version="3.1.0"
-)
-
-
-# ==================================================
-# CORS
-# ==================================================
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
-
-
-# ==================================================
-# AUTHENTICATION ROUTES
-# ==================================================
-
-app.include_router(auth_router)
-
-
-# ==================================================
-# LOAD MODEL
-# ==================================================
-
-model = joblib.load("thyroid_xgboost_model.pkl")
-
-explainer = shap.TreeExplainer(model)
-
-
-# ==================================================
-# FEATURES
-# ==================================================
-
-FEATURES = [
-    "age",
-    "sex",
-    "on thyroxine",
-    "query on thyroxine",
-    "on antithyroid medication",
-    "sick",
-    "pregnant",
-    "thyroid surgery",
-    "I131 treatment",
-    "query hypothyroid",
-    "query hyperthyroid",
-    "lithium",
-    "goitre",
-    "tumor",
-    "hypopituitary",
-    "psych",
-    "TSH measured",
-    "TSH",
-    "T3 measured",
-    "TT4 measured",
-    "TT4",
-    "T4U measured",
-    "T4U",
-    "FTI measured",
-    "FTI"
+TARGET_NAMES = [
+    "target",
+    "class",
+    "label",
+    "diagnosis",
+    "thyroid",
+    "thyroid_disease",
+    "disease",
+    "output",
+    "result",
+    "status"
 ]
 
 
-CONTINUOUS_FEATURES = [
-    "age",
-    "TSH",
-    "TT4",
-    "T4U",
-    "FTI"
-]
+def find_target_column(df):
 
-
-CATEGORICAL_FEATURES = [
-    col
-    for col in FEATURES
-    if col not in CONTINUOUS_FEATURES
-]
-
-
-# ==================================================
-# DICE TRAINING DATA
-# ==================================================
-
-dice_data_df = pd.read_csv(
-    "dice_training_data.csv"
-)
-
-
-dice_data = dice_ml.Data(
-    dataframe=dice_data_df,
-    continuous_features=CONTINUOUS_FEATURES,
-    categorical_features=CATEGORICAL_FEATURES,
-    outcome_name="binaryClass"
-)
-
-
-# ==================================================
-# NUMERIC MODEL WRAPPER
-# ==================================================
-
-class NumericModelWrapper:
-
-    def __init__(self, model, feature_names):
-        self.model = model
-        self.feature_names = feature_names
-
-    def predict_proba(self, X):
-
-        X = pd.DataFrame(
-            X,
-            columns=self.feature_names
-        )
-
-        X = X.apply(
-            pd.to_numeric,
-            errors="coerce"
-        ).astype(float)
-
-        return self.model.predict_proba(X)
-
-    def predict(self, X):
-
-        X = pd.DataFrame(
-            X,
-            columns=self.feature_names
-        )
-
-        X = X.apply(
-            pd.to_numeric,
-            errors="coerce"
-        ).astype(float)
-
-        return self.model.predict(X)
-
-
-wrapped_model = NumericModelWrapper(
-    model,
-    FEATURES
-)
-
-
-dice_model = dice_ml.Model(
-    model=wrapped_model,
-    backend="sklearn",
-    model_type="classifier"
-)
-
-
-dice_exp = dice_ml.Dice(
-    dice_data,
-    dice_model,
-    method="genetic"
-)
-
-
-# ==================================================
-# PERMITTED RANGES
-# ==================================================
-
-permitted_range = {}
-
-
-for col in CATEGORICAL_FEATURES:
-
-    categories = sorted(
-        dice_data_df[col]
-        .astype(str)
-        .unique()
-        .tolist()
-    )
-
-    permitted_range[col] = categories
-
-
-for col in CONTINUOUS_FEATURES:
-
-    permitted_range[col] = [
-        float(dice_data_df[col].min()),
-        float(dice_data_df[col].max())
-    ]
-
-
-# ==================================================
-# ROOT
-# ==================================================
-
-@app.get("/")
-def root():
-
-    return {
-        "message": "Thyroid Disease Prediction API is running",
-        "version": "3.1.0",
-        "features": [
-            "Prediction",
-            "SHAP",
-            "DiCE",
-            "User Authentication",
-            "User History",
-            "Admin Dataset Upload",
-            "Admin Prediction History"
-        ]
+    columns_lower = {
+        str(col).strip().lower(): col
+        for col in df.columns
     }
 
-
-# ==================================================
-# HEALTH CHECK
-# ==================================================
-
-@app.get("/health")
-def health():
-
-    return {
-        "status": "healthy",
-        "model": "XGBoost",
-        "explainability": [
-            "SHAP",
-            "DiCE"
-        ],
-        "authentication": True,
-        "user_history": True,
-        "admin_dataset_upload": True,
-        "admin_prediction_history": True
-    }
-
-
-# ==================================================
-# PREDICTION
-# ==================================================
-
-@app.post("/predict")
-def predict(data: dict):
-
-    missing = [
-        f
-        for f in FEATURES
-        if f not in data
-    ]
-
-    if missing:
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing features: {missing}"
-        )
-
-
-    input_df = pd.DataFrame(
-        [[data[f] for f in FEATURES]],
-        columns=FEATURES
-    )
-
-
-    # Make sure model receives numeric values
-    for column in FEATURES:
-        input_df[column] = pd.to_numeric(
-            input_df[column],
-            errors="coerce"
-        )
-
-
-    if input_df.isna().any().any():
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid or missing numeric values in prediction input."
-        )
-
-
-    prediction = int(
-        model.predict(input_df)[0]
-    )
-
-
-    probabilities = model.predict_proba(
-        input_df
-    )[0]
-
-
-    probability_class_0 = float(
-        probabilities[0]
-    )
-
-    probability_class_1 = float(
-        probabilities[1]
-    )
-
-
-    user_id = data.get("user_id")
-
-
-    # ==================================================
-    # SAVE USER PREDICTION HISTORY
-    # ==================================================
-
-    if user_id is not None:
-
-        try:
-
-            clean_input_data = {
-                feature: data[feature]
-                for feature in FEATURES
-            }
-
-            save_prediction(
-                user_id=int(user_id),
-                prediction=prediction,
-                probability_class_0=probability_class_0,
-                probability_class_1=probability_class_1,
-                input_data=json.dumps(
-                    clean_input_data
-                )
-            )
-
-        except Exception as e:
-
-            print(
-                "History save error:",
-                str(e)
-            )
-
-
-    return {
-
-        "prediction": prediction,
-
-        "probability_class_0":
-            probability_class_0,
-
-        "probability_class_1":
-            probability_class_1,
-
-        "message":
-            (
-                "Thyroid Disease Predicted"
-                if prediction == 1
-                else
-                "Thyroid Disease Not Predicted"
-            )
-    }
-
-
-# ==================================================
-# SHAP EXPLANATION
-# ==================================================
-
-@app.post("/explain")
-def explain(data: dict):
-
-    missing = [
-        f
-        for f in FEATURES
-        if f not in data
-    ]
-
-    if missing:
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing features: {missing}"
-        )
-
-
-    input_df = pd.DataFrame(
-        [[data[f] for f in FEATURES]],
-        columns=FEATURES
-    )
-
-
-    for column in FEATURES:
-
-        input_df[column] = pd.to_numeric(
-            input_df[column],
-            errors="coerce"
-        )
-
-
-    if input_df.isna().any().any():
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid numeric values supplied."
-        )
-
-
-    shap_result = explainer(
-        input_df
-    )
-
-
-    values = shap_result.values[0]
-
-
-    if len(values.shape) > 1:
-
-        values = values[:, -1]
-
-
-    explanation = []
-
-
-    for feature, value in zip(
-        FEATURES,
-        values
-    ):
-
-        explanation.append({
-
-            "feature": feature,
-
-            "shap_value":
-                float(value),
-
-            "impact":
-                (
-                    "positive"
-                    if value > 0
-                    else "negative"
-                )
+    for name in TARGET_NAMES:
+        if name in columns_lower:
+            return columns_lower[name]
+
+    # Look for columns containing target-like words
+    for col in df.columns:
+        col_lower = str(col).lower()
+
+        if any(
+            word in col_lower
+            for word in [
+                "target",
+                "class",
+                "diagnos",
+                "disease",
+                "thyroid",
+                "label",
+                "output"
+            ]
+        ):
+            return col
+
+    # Fallback: last column
+    return df.columns[-1]
+
+
+# --------------------------------------------------
+# FEATURE INFORMATION
+# --------------------------------------------------
+
+def create_feature_info(df, target):
+
+    result = []
+
+    for column in df.columns:
+
+        if column == target:
+            continue
+
+        series = df[column]
+
+        if pd.api.types.is_numeric_dtype(series):
+            feature_type = "numeric"
+        else:
+            feature_type = "categorical"
+
+        result.append({
+            "name": column,
+            "type": feature_type,
+            "missing": int(series.isna().sum())
         })
 
+    return result
 
-    explanation.sort(
-        key=lambda x:
-            abs(x["shap_value"]),
-        reverse=True
+
+# --------------------------------------------------
+# PREPARE DATA
+# --------------------------------------------------
+
+def prepare_target(y):
+
+    y = y.copy()
+
+    # Convert missing values
+    y = y.replace(
+        ["?", "NA", "N/A", "null", "None", ""],
+        np.nan
     )
 
+    y = y.dropna()
 
-    return {
+    # Numeric target
+    if pd.api.types.is_numeric_dtype(y):
+        unique = sorted(y.unique())
 
-        "explanation":
-            explanation[:10]
-    }
+        if len(unique) == 2:
+            mapping = {
+                unique[0]: 0,
+                unique[1]: 1
+            }
 
+            return y.map(mapping).astype(int)
 
-# ==================================================
-# COUNTERFACTUAL EXPLANATION
-# ==================================================
+    # Text target
+    values = y.astype(str).str.strip().str.lower()
 
-@app.post("/counterfactual")
-def counterfactual(data: dict):
+    unique = list(values.unique())
 
-    missing = [
-        f
-        for f in FEATURES
-        if f not in data
+    if len(unique) != 2:
+        raise ValueError(
+            f"Target column must contain exactly 2 classes. "
+            f"Found: {unique}"
+        )
+
+    # Prefer disease/positive class as 1
+    positive_words = [
+        "yes",
+        "disease",
+        "positive",
+        "true",
+        "1",
+        "thyroid"
     ]
 
-    if missing:
+    mapping = {}
 
-        raise HTTPException(
-            status_code=400,
-            detail=f"Missing features: {missing}"
-        )
+    for value in unique:
+        if any(word in value for word in positive_words):
+            mapping[value] = 1
 
+    if len(mapping) == 1:
+        negative = [
+            value for value in unique
+            if value not in mapping
+        ][0]
 
-    query_instance = pd.DataFrame(
-        [[data[f] for f in FEATURES]],
-        columns=FEATURES
-    )
+        mapping[negative] = 0
 
-
-    # ==================================================
-    # DICE CATEGORICAL VALUES
-    # ==================================================
-
-    for col in CATEGORICAL_FEATURES:
-
-        query_instance[col] = (
-            pd.to_numeric(
-                query_instance[col],
-                errors="coerce"
-            )
-            .fillna(0)
-            .astype(int)
-            .astype(str)
-        )
-
-
-    # ==================================================
-    # DICE CONTINUOUS VALUES
-    # ==================================================
-
-    for col in CONTINUOUS_FEATURES:
-
-        query_instance[col] = (
-            pd.to_numeric(
-                query_instance[col],
-                errors="coerce"
-            )
-            .astype(float)
-        )
-
-
-    if query_instance.isna().any().any():
-
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid values supplied for counterfactual generation."
-        )
-
-
-    try:
-
-        result = dice_exp.generate_counterfactuals(
-
-            query_instance,
-
-            total_CFs=3,
-
-            desired_class="opposite",
-
-            features_to_vary="all",
-
-            permitted_range=permitted_range
-        )
-
-
-        cf_df = (
-            result
-            .cf_examples_list[0]
-            .final_cfs_df
-        )
-
-
-        counterfactuals = (
-            cf_df
-            .to_dict(
-                orient="records"
-            )
-        )
-
-
-        return {
-
-            "counterfactuals":
-                counterfactuals
-
+    else:
+        mapping = {
+            unique[0]: 0,
+            unique[1]: 1
         }
 
-
-    except Exception as e:
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Counterfactual generation failed: {str(e)}"
-        )
+    return values.map(mapping).astype(int)
 
 
-# ==================================================
-# ADMIN - DATASET UPLOAD
-# ==================================================
+# --------------------------------------------------
+# BUILD PREPROCESSOR
+# --------------------------------------------------
 
-@app.post("/admin/upload-dataset")
-async def upload_dataset(
-    file: UploadFile = File(...)
-):
+def build_preprocessor(X):
 
-    if not file.filename:
+    numeric_columns = X.select_dtypes(
+        include=["number"]
+    ).columns.tolist()
 
-        raise HTTPException(
-            status_code=400,
-            detail="No file selected"
-        )
+    categorical_columns = X.select_dtypes(
+        exclude=["number"]
+    ).columns.tolist()
 
+    numeric_pipeline = Pipeline(
+        steps=[
+            (
+                "imputer",
+                SimpleImputer(strategy="median")
+            ),
+            (
+                "scaler",
+                StandardScaler()
+            )
+        ]
+    )
+
+    categorical_pipeline = Pipeline(
+        steps=[
+            (
+                "imputer",
+                SimpleImputer(
+                    strategy="most_frequent"
+                )
+            ),
+            (
+                "encoder",
+                OneHotEncoder(
+                    handle_unknown="ignore"
+                )
+            )
+        ]
+    )
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            (
+                "numeric",
+                numeric_pipeline,
+                numeric_columns
+            ),
+            (
+                "categorical",
+                categorical_pipeline,
+                categorical_columns
+            )
+        ]
+    )
+
+    return preprocessor
+
+
+# --------------------------------------------------
+# LOAD DATASET
+# --------------------------------------------------
+
+@app.route("/api/upload", methods=["POST"])
+def upload_dataset():
+
+    global DATASET
+    global DATASET_NAME
+    global TARGET_COLUMN
+    global FEATURE_COLUMNS
+    global FEATURE_INFO
+
+    if "file" not in request.files:
+        return jsonify({
+            "error": "No file uploaded"
+        }), 400
+
+    file = request.files["file"]
+
+    if file.filename == "":
+        return jsonify({
+            "error": "No file selected"
+        }), 400
 
     if not file.filename.lower().endswith(".csv"):
-
-        raise HTTPException(
-            status_code=400,
-            detail="Only CSV files are allowed"
-        )
-
-
-    os.makedirs(
-        "uploads",
-        exist_ok=True
-    )
-
-
-    file_path = os.path.join(
-        "uploads",
-        "admin_dataset.csv"
-    )
-
+        return jsonify({
+            "error": "Only CSV files are supported"
+        }), 400
 
     try:
 
-        with open(
-            file_path,
-            "wb"
-        ) as buffer:
-
-            shutil.copyfileobj(
-                file.file,
-                buffer
-            )
-
+        content = file.read()
 
         df = pd.read_csv(
-            file_path
+            io.BytesIO(content)
         )
 
+        if df.empty:
+            return jsonify({
+                "error": "Dataset is empty"
+            }), 400
 
-        return {
+        # Clean column names
+        df.columns = [
+            str(col).strip()
+            for col in df.columns
+        ]
 
-            "message":
-                "Dataset uploaded successfully",
+        DATASET = df
+        DATASET_NAME = file.filename
 
-            "filename":
-                file.filename,
+        TARGET_COLUMN = find_target_column(df)
 
-            "rows":
-                int(len(df)),
+        FEATURE_COLUMNS = [
+            col
+            for col in df.columns
+            if col != TARGET_COLUMN
+        ]
 
-            "columns":
-                int(len(df.columns)),
+        FEATURE_INFO = create_feature_info(
+            df,
+            TARGET_COLUMN
+        )
 
-            "column_names":
-                df.columns.tolist()
-        }
+        return jsonify({
+            "message": "Dataset uploaded successfully",
 
+            "dataset": {
+                "name": DATASET_NAME,
+                "rows": int(df.shape[0]),
+                "columns": int(df.shape[1]),
+                "features": len(FEATURE_COLUMNS),
+                "target": TARGET_COLUMN
+            },
+
+            "features": FEATURE_INFO
+        })
 
     except Exception as e:
 
-        raise HTTPException(
-            status_code=500,
-            detail=f"Dataset upload failed: {str(e)}"
-        )
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
-# ==================================================
-# ADMIN - ALL PREDICTION HISTORY
-# ==================================================
+# --------------------------------------------------
+# PREPROCESS
+# --------------------------------------------------
 
-@app.get("/admin/history")
-def admin_history():
+@app.route("/api/preprocess", methods=["POST"])
+def preprocess_dataset():
 
-    from database import get_connection
+    global DATASET
 
-    connection = get_connection()
+    if DATASET is None:
+        return jsonify({
+            "error": "Upload a dataset first"
+        }), 400
 
     try:
 
-        cursor = connection.cursor()
+        original_rows = len(DATASET)
 
+        df = DATASET.copy()
 
-        cursor.execute("""
-            SELECT
-                prediction_history.id,
-                prediction_history.user_id,
-                users.username,
-                users.email,
-                prediction_history.prediction,
-                prediction_history.probability_class_0,
-                prediction_history.probability_class_1,
-                prediction_history.input_data,
-                prediction_history.created_at
+        # Replace common missing markers
+        df = df.replace(
+            ["?", "NA", "N/A", "null", "None", ""],
+            np.nan
+        )
 
-            FROM prediction_history
+        # Remove completely empty columns
+        df = df.dropna(
+            axis=1,
+            how="all"
+        )
 
-            INNER JOIN users
-            ON prediction_history.user_id = users.id
+        # Remove duplicate rows
+        df = df.drop_duplicates()
 
-            ORDER BY prediction_history.created_at DESC
-        """)
+        DATASET = df
 
+        missing_values = int(
+            df.isna().sum().sum()
+        )
 
-        records = cursor.fetchall()
+        return jsonify({
+            "message": "Preprocessing completed",
 
+            "original_rows": original_rows,
 
-        history = []
+            "final_rows": int(len(df)),
 
-
-        for record in records:
-
-            item = dict(record)
-
-
-            try:
-
-                item["input_data"] = json.loads(
-                    item["input_data"]
-                )
-
-            except Exception:
-
-                pass
-
-
-            history.append(item)
-
-
-        return {
-
-            "history": history,
-
-            "total": len(history)
-
-        }
-
+            "missing_values": missing_values
+        })
 
     except Exception as e:
 
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unable to load admin history: {str(e)}"
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# --------------------------------------------------
+# TRAIN MODELS
+# --------------------------------------------------
+
+@app.route("/api/train", methods=["POST"])
+def train_models():
+
+    global MODELS
+    global MODEL_RESULTS
+    global X_TRAIN
+    global X_TEST
+    global Y_TRAIN
+    global Y_TEST
+
+    if DATASET is None:
+        return jsonify({
+            "error": "Upload a dataset first"
+        }), 400
+
+    try:
+
+        df = DATASET.copy()
+
+        if TARGET_COLUMN not in df.columns:
+            return jsonify({
+                "error": "Target column not found"
+            }), 400
+
+        X = df.drop(
+            columns=[TARGET_COLUMN]
         )
 
+        y = prepare_target(
+            df[TARGET_COLUMN]
+        )
 
-    finally:
+        # Align X with valid target rows
+        valid_indices = y.index
 
-        connection.close()
+        X = X.loc[valid_indices]
+
+        if len(y.unique()) != 2:
+            return jsonify({
+                "error": "The target must contain exactly two classes"
+            }), 400
+
+        X_TRAIN, X_TEST, Y_TRAIN, Y_TEST = train_test_split(
+            X,
+            y,
+            test_size=0.20,
+            random_state=42,
+            stratify=y
+        )
+
+        preprocessor = build_preprocessor(X)
+
+        algorithms = {
+
+            "Logistic Regression":
+                LogisticRegression(
+                    max_iter=2000
+                ),
+
+            "Random Forest":
+                RandomForestClassifier(
+                    n_estimators=200,
+                    random_state=42
+                ),
+
+            "Decision Tree":
+                DecisionTreeClassifier(
+                    random_state=42
+                ),
+
+            "K-Nearest Neighbors":
+                KNeighborsClassifier(
+                    n_neighbors=5
+                )
+        }
+
+        MODELS = {}
+        MODEL_RESULTS = {}
+
+        results = []
+
+        for name, algorithm in algorithms.items():
+
+            pipeline = Pipeline(
+                steps=[
+                    (
+                        "preprocessor",
+                        preprocessor
+                    ),
+                    (
+                        "model",
+                        algorithm
+                    )
+                ]
+            )
+
+            pipeline.fit(
+                X_TRAIN,
+                Y_TRAIN
+            )
+
+            predictions = pipeline.predict(
+                X_TEST
+            )
+
+            accuracy = accuracy_score(
+                Y_TEST,
+                predictions
+            )
+
+            MODELS[name] = pipeline
+
+            MODEL_RESULTS[name] = float(
+                accuracy
+            )
+
+            results.append({
+                "name": name,
+                "accuracy": float(accuracy)
+            })
+
+        return jsonify({
+            "message": "Models trained successfully",
+            "models": results
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
-# ==================================================
-# END
-# ==================================================
+# --------------------------------------------------
+# PREDICTION
+# --------------------------------------------------
+
+@app.route("/api/predict", methods=["POST"])
+def predict():
+
+    if not MODELS:
+        return jsonify({
+            "error": "Train the models first"
+        }), 400
+
+    try:
+
+        data = request.get_json()
+
+        if not data:
+            return jsonify({
+                "error": "No input data received"
+            }), 400
+
+        row = {}
+
+        for feature in FEATURE_COLUMNS:
+
+            value = data.get(feature)
+
+            if value is None or value == "":
+                value = np.nan
+
+            row[feature] = value
+
+        input_df = pd.DataFrame(
+            [row]
+        )
+
+        # Convert numeric columns
+        for feature in FEATURE_INFO:
+
+            name = feature["name"]
+
+            if feature["type"] == "numeric":
+
+                input_df[name] = pd.to_numeric(
+                    input_df[name],
+                    errors="coerce"
+                )
+
+        # Select model with highest test accuracy
+        best_model_name = max(
+            MODEL_RESULTS,
+            key=MODEL_RESULTS.get
+        )
+
+        model = MODELS[
+            best_model_name
+        ]
+
+        prediction = int(
+            model.predict(input_df)[0]
+        )
+
+        probability = None
+
+        if hasattr(
+            model,
+            "predict_proba"
+        ):
+
+            probabilities = model.predict_proba(
+                input_df
+            )[0]
+
+            if len(probabilities) > 1:
+                probability = float(
+                    probabilities[1]
+                )
+
+        if prediction == 1:
+
+            explanation = (
+                f"The selected model "
+                f"({best_model_name}) classified "
+                f"this input as Class 1. "
+                f"Class 1 represents the positive "
+                f"class in the trained dataset."
+            )
+
+        else:
+
+            explanation = (
+                f"The selected model "
+                f"({best_model_name}) classified "
+                f"this input as Class 0. "
+                f"Class 0 represents the negative "
+                f"class in the trained dataset."
+            )
+
+        return jsonify({
+
+            "prediction": prediction,
+
+            "probability": probability,
+
+            "model": best_model_name,
+
+            "accuracy": MODEL_RESULTS[
+                best_model_name
+            ],
+
+            "explanation": explanation
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+# --------------------------------------------------
+# STATUS
+# --------------------------------------------------
+
+@app.route("/api/status", methods=["GET"])
+def status():
+
+    dataset_info = None
+
+    if DATASET is not None:
+
+        dataset_info = {
+
+            "name": DATASET_NAME,
+
+            "rows": int(
+                DATASET.shape[0]
+            ),
+
+            "columns": int(
+                DATASET.shape[1]
+            ),
+
+            "features": len(
+                FEATURE_COLUMNS
+            ),
+
+            "target": TARGET_COLUMN
+        }
+
+    models = []
+
+    for name, accuracy in MODEL_RESULTS.items():
+
+        models.append({
+            "name": name,
+            "accuracy": accuracy
+        })
+
+    return jsonify({
+
+        "status": "online",
+
+        "dataset": dataset_info,
+
+        "features": FEATURE_INFO,
+
+        "models": models
+    })
+
+
+# --------------------------------------------------
+# HEALTH CHECK
+# --------------------------------------------------
+
+@app.route("/", methods=["GET"])
+def home():
+
+    return jsonify({
+        "message":
+            "ThyroAI backend is running successfully",
+        "status": "online"
+    })
+
+
+# --------------------------------------------------
+# RUN
+# --------------------------------------------------
+
+if __name__ == "__main__":
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            5000
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
