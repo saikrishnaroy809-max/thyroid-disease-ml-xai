@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -172,10 +172,7 @@ function Home() {
               👤 User Login
             </Link>
 
-            <Link
-              to="/admin-login"
-              className="secondary-button"
-            >
+            <Link to="/admin-login" className="secondary-button">
               🔐 Admin Login
             </Link>
           </div>
@@ -188,31 +185,23 @@ function Home() {
         <div className="feature-grid">
           <div className="feature-card">
             <div className="feature-icon">🤖</div>
-
             <h3>XGBoost Prediction</h3>
-
             <p>
-              Machine learning based thyroid disease
-              prediction.
+              Machine learning based thyroid disease prediction.
             </p>
           </div>
 
           <div className="feature-card">
             <div className="feature-icon">📊</div>
-
             <h3>SHAP Explainability</h3>
-
             <p>
-              Understand which features influence the
-              prediction.
+              Understand which features influence the prediction.
             </p>
           </div>
 
           <div className="feature-card">
             <div className="feature-icon">🔄</div>
-
             <h3>DiCE Counterfactuals</h3>
-
             <p>
               Generate alternative patient conditions and
               explanations.
@@ -221,12 +210,10 @@ function Home() {
 
           <div className="feature-card">
             <div className="feature-icon">🔐</div>
-
             <h3>Admin Management</h3>
-
             <p>
-              Admin can manage datasets and view all
-              prediction history.
+              Admin can manage datasets and view all prediction
+              history.
             </p>
           </div>
         </div>
@@ -285,7 +272,7 @@ function Login() {
 
       navigate("/dashboard");
     } catch (error) {
-      setError(error.message);
+      setError(error.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -302,8 +289,7 @@ function Login() {
           <h2>User Login</h2>
 
           <p>
-            Login to access your thyroid prediction
-            dashboard.
+            Login to access your thyroid prediction dashboard.
           </p>
 
           {error && <div className="error-box">{error}</div>}
@@ -314,9 +300,7 @@ function Login() {
             <input
               type="email"
               value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
+              onChange={(event) => setEmail(event.target.value)}
               placeholder="Enter your email"
               required
             />
@@ -325,9 +309,7 @@ function Login() {
 
             <PasswordField
               value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
+              onChange={(event) => setPassword(event.target.value)}
               placeholder="Enter your password"
             />
 
@@ -374,36 +356,29 @@ function Register() {
     setSuccess("");
 
     if (password.length < 6) {
-      setError(
-        "Password must contain at least 6 characters."
-      );
+      setError("Password must contain at least 6 characters.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}/auth/register`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username,
-            email,
-            password,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail || "Registration failed"
-        );
+        throw new Error(data.detail || "Registration failed");
       }
 
       setSuccess(
@@ -414,7 +389,7 @@ function Register() {
         navigate("/login");
       }, 1200);
     } catch (error) {
-      setError(error.message);
+      setError(error.message || "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -441,9 +416,7 @@ function Register() {
 
             <input
               value={username}
-              onChange={(event) =>
-                setUsername(event.target.value)
-              }
+              onChange={(event) => setUsername(event.target.value)}
               placeholder="Enter username"
               required
             />
@@ -453,10 +426,8 @@ function Register() {
             <input
               type="email"
               value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
-              placeholder="Enter email"
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Enter your email"
               required
             />
 
@@ -464,9 +435,7 @@ function Register() {
 
             <PasswordField
               value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
+              onChange={(event) => setPassword(event.target.value)}
               placeholder="Minimum 6 characters"
             />
 
@@ -475,9 +444,7 @@ function Register() {
               className="primary-button full-width"
               disabled={loading}
             >
-              {loading
-                ? "Creating account..."
-                : "Register"}
+              {loading ? "Creating account..." : "Register"}
             </button>
           </form>
 
@@ -513,26 +480,21 @@ function AdminLogin() {
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}/auth/admin-login`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            username,
-            password,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/auth/admin-login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail || "Admin login failed"
-        );
+        throw new Error(data.detail || "Admin login failed");
       }
 
       localStorage.setItem(
@@ -545,7 +507,7 @@ function AdminLogin() {
 
       navigate("/admin");
     } catch (error) {
-      setError(error.message);
+      setError(error.message || "Admin login failed");
     } finally {
       setLoading(false);
     }
@@ -570,9 +532,7 @@ function AdminLogin() {
 
             <input
               value={username}
-              onChange={(event) =>
-                setUsername(event.target.value)
-              }
+              onChange={(event) => setUsername(event.target.value)}
               placeholder="Enter admin username"
               required
             />
@@ -581,9 +541,7 @@ function AdminLogin() {
 
             <PasswordField
               value={password}
-              onChange={(event) =>
-                setPassword(event.target.value)
-              }
+              onChange={(event) => setPassword(event.target.value)}
               placeholder="Enter admin password"
             />
 
@@ -592,17 +550,17 @@ function AdminLogin() {
               className="primary-button full-width"
               disabled={loading}
             >
-              {loading
-                ? "Logging in..."
-                : "Admin Login"}
+              {loading ? "Logging in..." : "Admin Login"}
             </button>
           </form>
 
           <div className="admin-demo">
             <small>Demo credentials</small>
+
             <p>
               Username: <strong>admin</strong>
             </p>
+
             <p>
               Password: <strong>admin123</strong>
             </p>
@@ -633,9 +591,7 @@ function UserDashboard() {
       <div className="dashboard-page">
         <div className="dashboard-header">
           <div>
-            <span className="dashboard-label">
-              USER PANEL
-            </span>
+            <span className="dashboard-label">USER PANEL</span>
 
             <h1>👤 User Dashboard</h1>
 
@@ -648,10 +604,7 @@ function UserDashboard() {
         </div>
 
         <div className="dashboard-grid">
-          <Link
-            to="/prediction"
-            className="dashboard-card"
-          >
+          <Link to="/prediction" className="dashboard-card">
             <div className="dashboard-card-icon">🩺</div>
 
             <h3>New Prediction</h3>
@@ -662,17 +615,12 @@ function UserDashboard() {
             </p>
           </Link>
 
-          <Link
-            to="/history"
-            className="dashboard-card"
-          >
+          <Link to="/history" className="dashboard-card">
             <div className="dashboard-card-icon">📜</div>
 
             <h3>My Prediction History</h3>
 
-            <p>
-              View your previous prediction records.
-            </p>
+            <p>View your previous prediction records.</p>
           </Link>
 
           <div className="dashboard-card">
@@ -681,8 +629,7 @@ function UserDashboard() {
             <h3>SHAP Explanation</h3>
 
             <p>
-              Understand the factors affecting your
-              prediction.
+              Understand the factors affecting your prediction.
             </p>
           </div>
 
@@ -773,6 +720,10 @@ const booleanFields = [
   "FTI measured",
 ];
 
+/* =========================================================
+   PREDICTION
+========================================================= */
+
 function Prediction() {
   const user = getUser();
 
@@ -819,15 +770,13 @@ function Prediction() {
       const payload = {
         ...form,
         user_id: user.user_id,
+        age: Number(form.age),
+        sex: Number(form.sex),
+        TSH: Number(form.TSH),
+        TT4: Number(form.TT4),
+        T4U: Number(form.T4U),
+        FTI: Number(form.FTI),
       };
-
-      payload.age = Number(payload.age);
-      payload.sex = Number(payload.sex);
-
-      payload.TSH = Number(payload.TSH);
-      payload.TT4 = Number(payload.TT4);
-      payload.T4U = Number(payload.T4U);
-      payload.FTI = Number(payload.FTI);
 
       booleanFields.forEach((field) => {
         payload[field] = Number(payload[field]);
@@ -867,13 +816,13 @@ function Prediction() {
           }
         );
 
-        if (shapResponse.ok) {
-          const shapResult = await shapResponse.json();
+        const shapResult = await shapResponse.json();
 
+        if (shapResponse.ok) {
           shapData = shapResult.explanation || [];
         }
       } catch (shapError) {
-        console.log("SHAP error:", shapError);
+        console.log("SHAP explanation unavailable:", shapError);
       }
 
       /* ---------------- DiCE ---------------- */
@@ -892,13 +841,16 @@ function Prediction() {
           }
         );
 
-        if (diceResponse.ok) {
-          const diceResult = await diceResponse.json();
+        const diceResult = await diceResponse.json();
 
+        if (diceResponse.ok) {
           diceData = diceResult.counterfactuals || [];
         }
       } catch (diceError) {
-        console.log("DiCE error:", diceError);
+        console.log(
+          "Counterfactual explanation unavailable:",
+          diceError
+        );
       }
 
       /* ---------------- SAVE RESULT ---------------- */
@@ -917,7 +869,7 @@ function Prediction() {
 
       window.location.href = "/results";
     } catch (error) {
-      setError(error.message);
+      setError(error.message || "Prediction failed.");
     } finally {
       setLoading(false);
     }
@@ -929,9 +881,7 @@ function Prediction() {
 
       <div className="form-page">
         <div className="form-header">
-          <span className="dashboard-label">
-            AI DIAGNOSIS
-          </span>
+          <span className="dashboard-label">AI DIAGNOSIS</span>
 
           <h1>🩺 Thyroid Disease Prediction</h1>
 
@@ -959,10 +909,7 @@ function Prediction() {
                   max="120"
                   value={form.age}
                   onChange={(event) =>
-                    updateField(
-                      "age",
-                      event.target.value
-                    )
+                    updateField("age", event.target.value)
                   }
                   placeholder="Enter age"
                   required
@@ -993,10 +940,7 @@ function Prediction() {
 
             <div className="checkbox-grid">
               {booleanFields.map((field) => (
-                <label
-                  key={field}
-                  className="checkbox-item"
-                >
+                <label key={field} className="checkbox-item">
                   <input
                     type="checkbox"
                     checked={Number(form[field]) === 1}
@@ -1026,10 +970,7 @@ function Prediction() {
                   step="any"
                   value={form.TSH}
                   onChange={(event) =>
-                    updateField(
-                      "TSH",
-                      event.target.value
-                    )
+                    updateField("TSH", event.target.value)
                   }
                   placeholder="Enter TSH"
                   required
@@ -1044,10 +985,7 @@ function Prediction() {
                   step="any"
                   value={form.TT4}
                   onChange={(event) =>
-                    updateField(
-                      "TT4",
-                      event.target.value
-                    )
+                    updateField("TT4", event.target.value)
                   }
                   placeholder="Enter TT4"
                   required
@@ -1062,10 +1000,7 @@ function Prediction() {
                   step="any"
                   value={form.T4U}
                   onChange={(event) =>
-                    updateField(
-                      "T4U",
-                      event.target.value
-                    )
+                    updateField("T4U", event.target.value)
                   }
                   placeholder="Enter T4U"
                   required
@@ -1080,10 +1015,7 @@ function Prediction() {
                   step="any"
                   value={form.FTI}
                   onChange={(event) =>
-                    updateField(
-                      "FTI",
-                      event.target.value
-                    )
+                    updateField("FTI", event.target.value)
                   }
                   placeholder="Enter FTI"
                   required
@@ -1131,7 +1063,6 @@ function Results() {
   }
 
   const prediction = result.prediction || {};
-
   const shap = result.shap || [];
   const dice = result.dice || [];
 
@@ -1147,6 +1078,9 @@ THYROAI - THYROID DISEASE PREDICTION REPORT
 
 User:
 ${result.username || "Unknown"}
+
+Email:
+${result.email || "Unknown"}
 
 Prediction:
 ${prediction.message || "Unknown"}
@@ -1166,24 +1100,33 @@ ${(
 
 SHAP EXPLANATION
 ================
-${shap
-  .map(
-    (item) =>
-      `${item.feature}: ${Number(
-        item.shap_value
-      ).toFixed(4)} (${item.impact})`
-  )
-  .join("\n")}
+${
+  shap.length
+    ? shap
+        .map(
+          (item) =>
+            `${item.feature}: ${Number(
+              item.shap_value
+            ).toFixed(4)} (${item.impact})`
+        )
+        .join("\n")
+    : "SHAP explanation unavailable."
+}
 
 COUNTERFACTUAL EXPLANATIONS
 ===========================
-${dice.length
-  ? dice.map((item, index) => {
-      return `Counterfactual ${index + 1}: ${JSON.stringify(
-        item
-      )}`;
-    }).join("\n")
-  : "No counterfactuals available."}
+${
+  dice.length
+    ? dice
+        .map(
+          (item, index) =>
+            `Counterfactual ${index + 1}: ${JSON.stringify(
+              item
+            )}`
+        )
+        .join("\n")
+    : "No counterfactuals available."
+}
 
 ============================================
 This report is generated by ThyroAI.
@@ -1194,7 +1137,6 @@ This report is generated by ThyroAI.
     });
 
     const url = URL.createObjectURL(blob);
-
     const link = document.createElement("a");
 
     link.href = url;
@@ -1213,9 +1155,7 @@ This report is generated by ThyroAI.
 
       <div className="results-page">
         <div className="results-header">
-          <span className="dashboard-label">
-            AI RESULTS
-          </span>
+          <span className="dashboard-label">AI RESULTS</span>
 
           <h1>📊 Prediction Results</h1>
         </div>
@@ -1241,8 +1181,7 @@ This report is generated by ThyroAI.
           </h2>
 
           <p className="model-class">
-            Model prediction: Class{" "}
-            {prediction.prediction}
+            Model prediction: Class {prediction.prediction}
           </p>
         </div>
 
@@ -1279,17 +1218,13 @@ This report is generated by ThyroAI.
             <h2>📊 SHAP Feature Importance</h2>
 
             <p>
-              The most influential features for this
-              prediction.
+              The most influential features for this prediction.
             </p>
           </div>
 
           {chartData.length > 0 ? (
             <div className="chart-container">
-              <ResponsiveContainer
-                width="100%"
-                height={400}
-              >
+              <ResponsiveContainer width="100%" height={400}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
 
@@ -1304,10 +1239,7 @@ This report is generated by ThyroAI.
 
                   <Tooltip />
 
-                  <Bar
-                    dataKey="value"
-                    name="SHAP Value"
-                  />
+                  <Bar dataKey="value" name="SHAP Value" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1323,8 +1255,8 @@ This report is generated by ThyroAI.
             <h2>🔄 DiCE Counterfactual Explanation</h2>
 
             <p>
-              Alternative feature combinations generated by
-              the model.
+              Alternative feature combinations generated by the
+              model.
             </p>
           </div>
 
@@ -1334,11 +1266,10 @@ This report is generated by ThyroAI.
                 <thead>
                   <tr>
                     <th>#</th>
-                    {Object.keys(dice[0]).map(
-                      (key) => (
-                        <th key={key}>{key}</th>
-                      )
-                    )}
+
+                    {Object.keys(dice[0]).map((key) => (
+                      <th key={key}>{key}</th>
+                    ))}
                   </tr>
                 </thead>
 
@@ -1347,13 +1278,9 @@ This report is generated by ThyroAI.
                     <tr key={index}>
                       <td>{index + 1}</td>
 
-                      {Object.keys(dice[0]).map(
-                        (key) => (
-                          <td key={key}>
-                            {String(row[key])}
-                          </td>
-                        )
-                      )}
+                      {Object.keys(dice[0]).map((key) => (
+                        <td key={key}>{String(row[key])}</td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -1374,17 +1301,11 @@ This report is generated by ThyroAI.
             📄 Download Report
           </button>
 
-          <Link
-            to="/prediction"
-            className="secondary-button"
-          >
+          <Link to="/prediction" className="secondary-button">
             🔄 New Prediction
           </Link>
 
-          <Link
-            to="/dashboard"
-            className="secondary-button"
-          >
+          <Link to="/dashboard" className="secondary-button">
             🏠 Dashboard
           </Link>
         </div>
@@ -1406,8 +1327,11 @@ function UserHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  React.useEffect(() => {
-    if (!user) return;
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     async function loadHistory() {
       try {
@@ -1425,14 +1349,14 @@ function UserHistory() {
 
         setHistory(data.history || []);
       } catch (error) {
-        setError(error.message);
+        setError(error.message || "Unable to load history");
       } finally {
         setLoading(false);
       }
     }
 
     loadHistory();
-  }, [user]);
+  }, [user?.user_id]);
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -1444,9 +1368,7 @@ function UserHistory() {
 
       <div className="history-page">
         <div className="form-header">
-          <span className="dashboard-label">
-            USER HISTORY
-          </span>
+          <span className="dashboard-label">USER HISTORY</span>
 
           <h1>📜 My Prediction History</h1>
 
@@ -1530,21 +1452,14 @@ function AdminDashboard() {
   const admin = getAdmin();
 
   const [history, setHistory] = useState([]);
-  const [historyLoading, setHistoryLoading] =
-    useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadError, setUploadError] = useState("");
 
   const [datasetInfo, setDatasetInfo] = useState(null);
-
-  const [preprocessing, setPreprocessing] =
-    useState(false);
-  const [training, setTraining] = useState(false);
-
-  const [processMessage, setProcessMessage] =
-    useState("");
+  const [processMessage, setProcessMessage] = useState("");
 
   if (!admin) {
     return <Navigate to="/admin-login" replace />;
@@ -1552,11 +1467,10 @@ function AdminDashboard() {
 
   async function loadHistory() {
     setHistoryLoading(true);
+    setProcessMessage("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/admin/history`
-      );
+      const response = await fetch(`${API_URL}/admin/history`);
 
       const data = await response.json();
 
@@ -1568,7 +1482,9 @@ function AdminDashboard() {
 
       setHistory(data.history || []);
     } catch (error) {
-      setProcessMessage(error.message);
+      setProcessMessage(
+        error.message || "Unable to load prediction history."
+      );
     } finally {
       setHistoryLoading(false);
     }
@@ -1586,11 +1502,11 @@ function AdminDashboard() {
 
     setUploadMessage("");
     setUploadError("");
+    setDatasetInfo(null);
     setUploading(true);
 
     try {
       const formData = new FormData();
-
       formData.append("file", file);
 
       const response = await fetch(
@@ -1615,42 +1531,18 @@ function AdminDashboard() {
         `Dataset uploaded successfully: ${data.rows} rows and ${data.columns} columns.`
       );
     } catch (error) {
-      setUploadError(error.message);
+      setUploadError(
+        error.message || "Dataset upload failed."
+      );
     } finally {
       setUploading(false);
     }
   }
 
-  function preprocessDataset() {
-    setPreprocessing(true);
-    setProcessMessage("");
-
-    setTimeout(() => {
-      setPreprocessing(false);
-
-      setProcessMessage(
-        "Dataset preprocessing completed successfully."
-      );
-    }, 1500);
-  }
-
-  function applyAlgorithm() {
-    setTraining(true);
-    setProcessMessage("");
-
-    setTimeout(() => {
-      setTraining(false);
-
-      setProcessMessage(
-        "XGBoost algorithm applied successfully. Test accuracy: 98.99%."
-      );
-    }, 2000);
-  }
-
   const comparisonData = [
     {
       algorithm: "XGBoost",
-      accuracy: 98.99,
+      accuracy: TEST_ACCURACY,
     },
     {
       algorithm: "Random Forest",
@@ -1673,15 +1565,12 @@ function AdminDashboard() {
       <div className="admin-page">
         <div className="admin-header">
           <div>
-            <span className="dashboard-label">
-              ADMIN PANEL
-            </span>
+            <span className="dashboard-label">ADMIN PANEL</span>
 
             <h1>🔐 Admin Dashboard</h1>
 
             <p>
-              Welcome,{" "}
-              <strong>{admin.username}</strong>
+              Welcome, <strong>{admin.username}</strong>
             </p>
           </div>
 
@@ -1740,20 +1629,19 @@ function AdminDashboard() {
             <h2>📁 Dataset Management</h2>
 
             <p>
-              Upload and process a thyroid disease dataset.
+              Upload a CSV dataset for administrative review.
             </p>
           </div>
 
           <div className="admin-action-grid">
             <div className="admin-action-card">
-              <div className="dashboard-card-icon">
-                📤
-              </div>
+              <div className="dashboard-card-icon">📤</div>
 
               <h3>Upload Dataset</h3>
 
               <p>
-                Upload a CSV dataset for analysis.
+                Upload a CSV dataset and view its basic
+                information.
               </p>
 
               <label className="primary-button upload-label">
@@ -1772,66 +1660,40 @@ function AdminDashboard() {
             </div>
 
             <div className="admin-action-card">
-              <div className="dashboard-card-icon">
-                ⚙️
-              </div>
+              <div className="dashboard-card-icon">⚙️</div>
 
-              <h3>Preprocess Dataset</h3>
+              <h3>Preprocessing</h3>
 
               <p>
-                Prepare the dataset for machine learning.
+                Backend preprocessing can be connected here.
               </p>
 
-              <button
-                onClick={preprocessDataset}
-                className="secondary-button"
-                disabled={preprocessing}
-              >
-                {preprocessing
-                  ? "Processing..."
-                  : "Preprocess Dataset"}
-              </button>
+              <span className="secondary-button">
+                Backend Required
+              </span>
             </div>
 
             <div className="admin-action-card">
-              <div className="dashboard-card-icon">
-                🤖
-              </div>
+              <div className="dashboard-card-icon">🤖</div>
 
-              <h3>Apply Algorithm</h3>
+              <h3>Algorithm Training</h3>
 
               <p>
-                Train and evaluate the XGBoost model.
+                Backend model training can be connected here.
               </p>
 
-              <button
-                onClick={applyAlgorithm}
-                className="secondary-button"
-                disabled={training}
-              >
-                {training
-                  ? "Training..."
-                  : "Apply XGBoost"}
-              </button>
+              <span className="secondary-button">
+                Backend Required
+              </span>
             </div>
           </div>
 
           {uploadMessage && (
-            <div className="success-box">
-              {uploadMessage}
-            </div>
+            <div className="success-box">{uploadMessage}</div>
           )}
 
           {uploadError && (
-            <div className="error-box">
-              {uploadError}
-            </div>
-          )}
-
-          {processMessage && (
-            <div className="success-box">
-              {processMessage}
-            </div>
+            <div className="error-box">{uploadError}</div>
           )}
 
           {datasetInfo && (
@@ -1844,14 +1706,20 @@ function AdminDashboard() {
               </p>
 
               <p>
-                <strong>Rows:</strong>{" "}
-                {datasetInfo.rows}
+                <strong>Rows:</strong> {datasetInfo.rows}
               </p>
 
               <p>
                 <strong>Columns:</strong>{" "}
                 {datasetInfo.columns}
               </p>
+
+              {datasetInfo.column_names?.length > 0 && (
+                <p>
+                  <strong>Columns:</strong>{" "}
+                  {datasetInfo.column_names.join(", ")}
+                </p>
+              )}
             </div>
           )}
         </section>
@@ -1865,7 +1733,7 @@ function AdminDashboard() {
             <h2>📈 Model Performance</h2>
 
             <p>
-              Comparison of machine learning algorithms.
+              The verified XGBoost test accuracy is shown below.
             </p>
           </div>
 
@@ -1876,10 +1744,7 @@ function AdminDashboard() {
           </div>
 
           <div className="chart-container">
-            <ResponsiveContainer
-              width="100%"
-              height={400}
-            >
+            <ResponsiveContainer width="100%" height={400}>
               <BarChart data={comparisonData}>
                 <CartesianGrid strokeDasharray="3 3" />
 
@@ -1902,6 +1767,14 @@ function AdminDashboard() {
                 />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+
+          <div className="empty-box">
+            Note: XGBoost accuracy of 98.99% is from the trained
+            project model. The other comparison values are
+            currently illustrative and should not be presented
+            as experimentally verified results until the backend
+            trains those algorithms.
           </div>
         </section>
 
@@ -1929,13 +1802,15 @@ function AdminDashboard() {
               : "🔄 Load All Prediction History"}
           </button>
 
-          {history.length === 0 &&
-            !historyLoading && (
-              <div className="empty-box">
-                Click the button above to load prediction
-                history.
-              </div>
-            )}
+          {processMessage && (
+            <div className="error-box">{processMessage}</div>
+          )}
+
+          {history.length === 0 && !historyLoading && (
+            <div className="empty-box">
+              Click the button above to load prediction history.
+            </div>
+          )}
 
           {history.length > 0 && (
             <div className="table-wrapper admin-table">
@@ -2019,16 +1894,11 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* HOME */}
         <Route path="/" element={<Home />} />
 
-        {/* USER */}
         <Route path="/login" element={<Login />} />
 
-        <Route
-          path="/register"
-          element={<Register />}
-        />
+        <Route path="/register" element={<Register />} />
 
         <Route
           path="/dashboard"
@@ -2050,7 +1920,6 @@ function App() {
           element={<UserHistory />}
         />
 
-        {/* ADMIN */}
         <Route
           path="/admin-login"
           element={<AdminLogin />}
@@ -2061,7 +1930,6 @@ function App() {
           element={<AdminDashboard />}
         />
 
-        {/* FALLBACK */}
         <Route
           path="*"
           element={<Navigate to="/" replace />}
