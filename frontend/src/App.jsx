@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-
 import {
   BrowserRouter,
   Routes,
@@ -8,26 +7,21 @@ import {
   Navigate,
   Link,
   useNavigate,
+  useLocation,
 } from "react-router-dom";
-
 import {
+  ResponsiveContainer,
   BarChart,
   Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
 } from "recharts";
-
 import "./index.css";
 
 const API_URL = "https://thyroid-disease-ml-xai.onrender.com";
 const TEST_ACCURACY = 98.99;
-
-/* =========================================================
-   MODEL FEATURES
-========================================================= */
 
 const FEATURES = [
   "age",
@@ -57,7 +51,7 @@ const FEATURES = [
   "FTI",
 ];
 
-const INITIAL_FORM = {
+const initialForm = {
   age: 35,
   sex: 1,
   "on thyroxine": 0,
@@ -78,16 +72,62 @@ const INITIAL_FORM = {
   TSH: 2.5,
   "T3 measured": 1,
   "TT4 measured": 1,
-  TT4: 100,
+  TT4: 110,
   "T4U measured": 1,
-  T4U: 1,
+  T4U: 0.9,
   "FTI measured": 1,
-  FTI: 100,
+  FTI: 120,
 };
 
-/* =========================================================
-   HELPERS
-========================================================= */
+const binaryFields = [
+  "on thyroxine",
+  "query on thyroxine",
+  "on antithyroid medication",
+  "sick",
+  "pregnant",
+  "thyroid surgery",
+  "I131 treatment",
+  "query hypothyroid",
+  "query hyperthyroid",
+  "lithium",
+  "goitre",
+  "tumor",
+  "hypopituitary",
+  "psych",
+  "TSH measured",
+  "T3 measured",
+  "TT4 measured",
+  "T4U measured",
+  "FTI measured",
+];
+
+const fieldLabels = {
+  age: "Age",
+  sex: "Sex",
+  "on thyroxine": "On Thyroxine",
+  "query on thyroxine": "Query On Thyroxine",
+  "on antithyroid medication": "Antithyroid Medication",
+  sick: "Sick",
+  pregnant: "Pregnant",
+  "thyroid surgery": "Thyroid Surgery",
+  "I131 treatment": "I131 Treatment",
+  "query hypothyroid": "Query Hypothyroid",
+  "query hyperthyroid": "Query Hyperthyroid",
+  lithium: "Lithium",
+  goitre: "Goitre",
+  tumor: "Tumor",
+  hypopituitary: "Hypopituitary",
+  psych: "Psych",
+  "TSH measured": "TSH Measured",
+  TSH: "TSH",
+  "T3 measured": "T3 Measured",
+  "TT4 measured": "TT4 Measured",
+  TT4: "TT4",
+  "T4U measured": "T4U Measured",
+  T4U: "T4U",
+  "FTI measured": "FTI Measured",
+  FTI: "FTI",
+};
 
 function getUser() {
   try {
@@ -105,442 +145,451 @@ function getAdmin() {
   }
 }
 
-function saveUser(user) {
-  localStorage.setItem("thyroidUser", JSON.stringify(user));
-}
-
-function saveAdmin(admin) {
-  localStorage.setItem("thyroidAdmin", JSON.stringify(admin));
-}
-
-function logoutUser() {
-  localStorage.removeItem("thyroidUser");
-  localStorage.removeItem("latestPrediction");
-  window.location.href = "/login";
-}
-
-function logoutAdmin() {
-  localStorage.removeItem("thyroidAdmin");
-  window.location.href = "/admin-login";
-}
-
-function formatFeatureName(name) {
-  return name
-    .replace("TSH", "TSH")
-    .replace("TT4", "TT4")
-    .replace("T4U", "T4U")
-    .replace("FTI", "FTI")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-async function getErrorMessage(error) {
-  if (error.response?.data?.detail) {
-    return error.response.data.detail;
-  }
-
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  }
-
-  if (error.message) {
-    return error.message;
-  }
-
-  return "Something went wrong. Please try again.";
-}
-
-/* =========================================================
-   PASSWORD FIELD
-========================================================= */
-
-function PasswordField({
-  value,
-  onChange,
-  placeholder = "Password",
-  required = true,
-}) {
-  const [show, setShow] = useState(false);
-
+function Logo() {
   return (
-    <div className="password-field">
-      <input
-        type={show ? "text" : "password"}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        required={required}
-      />
+    <Link to="/" className="logo">
+      <span className="logo-mark">✚</span>
+      <span>Thyro<span>AI</span></span>
+    </Link>
+  );
+}
 
-      <button
-        type="button"
-        className="password-eye"
-        onClick={() => setShow((previous) => !previous)}
-        aria-label={show ? "Hide password" : "Show password"}
-      >
-        {show ? "🙈" : "👁️"}
-      </button>
+function PageLoader() {
+  return (
+    <div className="page-loader">
+      <div className="loader-ring" />
+      <p>Loading ThyroAI...</p>
     </div>
   );
 }
 
-/* =========================================================
-   NAVBAR
-========================================================= */
+function TopNav() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = getUser();
+  const admin = getAdmin();
 
-function Navbar() {
-  const [user, setUser] = useState(getUser());
-  const [admin, setAdmin] = useState(getAdmin());
+  const logout = () => {
+    localStorage.removeItem("thyroidUser");
+    localStorage.removeItem("latestPrediction");
+    navigate("/login");
+  };
 
-  useEffect(() => {
-    const update = () => {
-      setUser(getUser());
-      setAdmin(getAdmin());
-    };
+  const adminLogout = () => {
+    localStorage.removeItem("thyroidAdmin");
+    navigate("/admin-login");
+  };
 
-    window.addEventListener("storage", update);
+  if (admin) {
+    return (
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Logo />
 
-    const interval = setInterval(update, 1000);
-
-    return () => {
-      window.removeEventListener("storage", update);
-      clearInterval(interval);
-    };
-  }, []);
+          <div className="topbar-right">
+            <span className="role-pill admin-pill">ADMIN</span>
+            <button className="logout-btn" onClick={adminLogout}>
+              ↪ Logout
+            </button>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
-    <header className="navbar">
-      <Link to="/" className="brand">
-        <div className="brand-icon">🦋</div>
+    <header className="topbar">
+      <div className="topbar-inner">
+        <Logo />
 
-        <div>
-          <div className="brand-name">ThyroAI</div>
-          <div className="brand-subtitle">Intelligent Thyroid Diagnosis</div>
+        <nav className="desktop-nav">
+          <Link className={location.pathname === "/" ? "active" : ""} to="/">
+            Home
+          </Link>
+
+          {user && (
+            <>
+              <Link
+                className={location.pathname === "/dashboard" ? "active" : ""}
+                to="/dashboard"
+              >
+                Dashboard
+              </Link>
+              <Link
+                className={location.pathname === "/predict" ? "active" : ""}
+                to="/predict"
+              >
+                Predict
+              </Link>
+              <Link
+                className={location.pathname === "/history" ? "active" : ""}
+                to="/history"
+              >
+                History
+              </Link>
+            </>
+          )}
+        </nav>
+
+        <div className="topbar-right">
+          {user ? (
+            <>
+              <div className="user-chip">
+                <span>{user.username?.charAt(0).toUpperCase()}</span>
+                <b>{user.username}</b>
+              </div>
+              <button className="logout-btn" onClick={logout}>
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link className="nav-login" to="/login">
+                Login
+              </Link>
+              <Link className="nav-register" to="/register">
+                Get Started
+              </Link>
+            </>
+          )}
         </div>
-      </Link>
+      </div>
 
-      <nav className="nav-links">
-        <Link to="/">Home</Link>
-
-        {user && (
-          <>
-            <Link to="/dashboard">Dashboard</Link>
-            <Link to="/prediction">Prediction</Link>
-            <Link to="/history">History</Link>
-          </>
-        )}
-
-        {admin && <Link to="/admin">Admin Dashboard</Link>}
-
-        {!user && !admin && (
-          <>
-            <Link to="/login">User Login</Link>
-            <Link to="/register">Register</Link>
-            <Link to="/admin-login">Admin</Link>
-          </>
-        )}
-
-        {user && (
-          <button className="nav-logout" onClick={logoutUser}>
-            Logout
-          </button>
-        )}
-
-        {admin && (
-          <button className="nav-logout" onClick={logoutAdmin}>
-            Logout
-          </button>
-        )}
-      </nav>
+      {user && (
+        <nav className="mobile-nav">
+          <Link to="/dashboard">⌂<small>Home</small></Link>
+          <Link to="/predict">✚<small>Predict</small></Link>
+          <Link to="/history">◷<small>History</small></Link>
+        </nav>
+      )}
     </header>
   );
 }
 
-/* =========================================================
-   FOOTER
-========================================================= */
-
 function Footer() {
   return (
     <footer className="footer">
-      <div>
-        <strong>ThyroAI</strong>
-        <p>
-          Machine Learning powered thyroid disease prediction with
-          Explainable AI.
-        </p>
-      </div>
-
-      <div className="footer-right">
-        <span> XGBoost</span>
-        <span> SHAP</span>
-        <span> DiCE</span>
+      <div className="footer-inner">
+        <div>
+          <div className="footer-logo">✚ ThyroAI</div>
+          <p>Machine Learning powered thyroid disease analysis.</p>
+        </div>
+        <div className="footer-tech">
+          <span>XGBoost</span>
+          <span>SHAP</span>
+          <span>DiCE</span>
+        </div>
       </div>
     </footer>
   );
 }
 
-/* =========================================================
-   LAYOUT
-========================================================= */
-
 function Layout({ children }) {
   return (
     <div className="app-shell">
-      <Navbar />
-
-      <main className="main-content">{children}</main>
-
+      <TopNav />
+      <main>{children}</main>
       <Footer />
     </div>
   );
 }
 
-/* =========================================================
-   HOME
-========================================================= */
-
 function Home() {
   const user = getUser();
-  const admin = getAdmin();
 
   return (
-    <div className="home-page">
-      <section className="hero-section">
-        <div className="hero-content">
+    <Layout>
+      <section className="hero">
+        <div className="hero-glow glow-one" />
+        <div className="hero-glow glow-two" />
+
+        <div className="hero-inner">
           <div className="hero-badge">
-            AI-POWERED THYROID ANALYSIS
+            <span className="pulse-dot" />
+            AI-Powered Thyroid Analysis
           </div>
 
           <h1>
-            Smarter Thyroid
-            <span> Diagnosis with AI</span>
+            Understand your thyroid
+            <br />
+            with <span>Explainable AI.</span>
           </h1>
 
           <p>
-            ThyroAI uses machine learning and Explainable AI to predict
-            thyroid disease and explain the factors behind every prediction.
+            ThyroAI combines machine learning with SHAP and counterfactual
+            explanations to make thyroid disease predictions easier to
+            understand.
           </p>
 
           <div className="hero-buttons">
-            {user ? (
-              <Link to="/prediction" className="primary-button">
-                Start Prediction →
-              </Link>
-            ) : admin ? (
-              <Link to="/admin" className="primary-button">
-                Open Admin Dashboard →
-              </Link>
-            ) : (
-              <>
-                <Link to="/register" className="primary-button">
-                  Get Started →
-                </Link>
+            <Link
+              className="primary-btn large-btn"
+              to={user ? "/predict" : "/register"}
+            >
+              {user ? "Start Prediction →" : "Start Your Analysis →"}
+            </Link>
 
-                <Link to="/login" className="secondary-button">
-                  User Login
-                </Link>
-              </>
-            )}
+            <a className="secondary-btn large-btn" href="#features">
+              Explore Platform
+            </a>
           </div>
 
           <div className="hero-trust">
-            <div>
-              <strong>98.99%</strong>
-              <span>Test Accuracy</span>
-            </div>
-
-            <div>
-              <strong>XGBoost</strong>
-              <span>ML Model</span>
-            </div>
-
-            <div>
-              <strong>SHAP + DiCE</strong>
-              <span>Explainability</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="hero-visual">
-          <div className="medical-card">
-            <div className="medical-card-icon">🩺</div>
-
-            <h3>Thyroid AI Analysis</h3>
-
-            <div className="analysis-row">
-              <span>Machine Learning</span>
-              <strong>98.99%</strong>
-            </div>
-
-            <div className="analysis-row">
-              <span>Explainability</span>
-              <strong>SHAP</strong>
-            </div>
-
-            <div className="analysis-row">
-              <span>Counterfactuals</span>
-              <strong>DiCE</strong>
-            </div>
-
-            <div className="analysis-status">
-              <span className="status-dot"></span>
-              AI System Ready
-            </div>
+            <span>✓ XGBoost</span>
+            <span>✓ SHAP Explainability</span>
+            <span>✓ DiCE Counterfactuals</span>
           </div>
         </div>
       </section>
 
-      <section className="features-section">
+      <section className="stats-strip">
+        <div className="stats-strip-inner">
+          <div>
+            <strong>{TEST_ACCURACY}%</strong>
+            <span>Test Accuracy</span>
+          </div>
+          <div>
+            <strong>25</strong>
+            <span>Clinical Features</span>
+          </div>
+          <div>
+            <strong>3</strong>
+            <span>AI Technologies</span>
+          </div>
+          <div>
+            <strong>24/7</strong>
+            <span>Web Access</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section" id="features">
         <div className="section-heading">
-          <span>POWERFUL FEATURES</span>
-          <h2>One Platform. Complete Analysis.</h2>
+          <span className="section-label">PLATFORM</span>
+          <h2>Everything in one intelligent workspace</h2>
           <p>
-            From prediction to explanation, ThyroAI provides a complete
-            machine-learning workflow.
+            A simple interface for prediction, explanation and analysis.
           </p>
         </div>
 
-        <div className="feature-grid">
+        <div className="feature-grid-new">
           <FeatureCard
-            icon="🤖"
-            title="XGBoost Prediction"
-            text="Predict thyroid disease using a trained XGBoost machine learning model."
+            icon="◉"
+            title="AI Prediction"
+            text="Use an XGBoost model trained on thyroid-related clinical features."
           />
-
           <FeatureCard
-            icon="📊"
-            title="SHAP Explanation"
-            text="Understand which patient features contributed most to the prediction."
+            icon="✦"
+            title="SHAP Explainability"
+            text="See which features have the strongest influence on a prediction."
           />
-
           <FeatureCard
-            icon="🔄"
-            title="DiCE Counterfactuals"
-            text="Explore possible changes that could lead to a different prediction."
+            icon="↔"
+            title="Counterfactual AI"
+            text="Explore how changing feature values could affect the prediction."
           />
-
           <FeatureCard
-            icon="📜"
+            icon="▣"
             title="Prediction History"
-            text="Securely review previous predictions and their results."
+            text="Keep track of your previous prediction results in one place."
+          />
+          <FeatureCard
+            icon="⌁"
+            title="Probability Analysis"
+            text="View model probabilities for both prediction classes."
+          />
+          <FeatureCard
+            icon="⌘"
+            title="Admin Analytics"
+            text="Administrators can manage datasets and review prediction activity."
           />
         </div>
       </section>
-    </div>
+
+      <section className="section explain-section">
+        <div className="explain-layout">
+          <div>
+            <span className="section-label">EXPLAINABLE AI</span>
+            <h2>Don't just get a prediction. Understand it.</h2>
+            <p>
+              ThyroAI combines predictive machine learning with explanation
+              techniques so the output is easier to interpret.
+            </p>
+
+            <div className="explain-list">
+              <div>
+                <span>01</span>
+                <div>
+                  <b>Prediction</b>
+                  <p>Determine the predicted thyroid disease class.</p>
+                </div>
+              </div>
+
+              <div>
+                <span>02</span>
+                <div>
+                  <b>SHAP</b>
+                  <p>Identify the features contributing to the prediction.</p>
+                </div>
+              </div>
+
+              <div>
+                <span>03</span>
+                <div>
+                  <b>DiCE</b>
+                  <p>Generate alternative scenarios using counterfactual AI.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="ai-visual">
+            <div className="ai-orbit orbit-one" />
+            <div className="ai-orbit orbit-two" />
+            <div className="ai-core">✦</div>
+            <div className="floating-card floating-one">SHAP</div>
+            <div className="floating-card floating-two">DiCE</div>
+            <div className="floating-card floating-three">XGBoost</div>
+          </div>
+        </div>
+      </section>
+    </Layout>
   );
 }
 
 function FeatureCard({ icon, title, text }) {
   return (
-    <div className="feature-card">
-      <div className="feature-icon">{icon}</div>
+    <div className="feature-new">
+      <div className="feature-new-icon">{icon}</div>
       <h3>{title}</h3>
       <p>{text}</p>
+      <span className="feature-arrow">→</span>
     </div>
   );
 }
 
-/* =========================================================
-   USER LOGIN
-========================================================= */
+function PasswordInput({ value, onChange, placeholder = "Password" }) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <div className="password-box">
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        required
+      />
+      <button type="button" onClick={() => setShow(!show)}>
+        {show ? "◉" : "○"}
+      </button>
+    </div>
+  );
+}
+
+function AuthLayout({ children, title, subtitle }) {
+  return (
+    <div className="auth-screen">
+      <div className="auth-decoration auth-decoration-one" />
+      <div className="auth-decoration auth-decoration-two" />
+
+      <div className="auth-box">
+        <Link to="/" className="auth-logo">
+          <span>✚</span>
+          ThyroAI
+        </Link>
+
+        <div className="auth-title">
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
+        </div>
+
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function Login() {
   const navigate = useNavigate();
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
+  const submit = async (e) => {
+    e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
-        email,
-        password,
-      });
-
-      saveUser(response.data);
-      localStorage.removeItem("thyroidAdmin");
-
+      const res = await axios.post(`${API_URL}/auth/login`, form);
+      localStorage.setItem("thyroidUser", JSON.stringify(res.data));
       navigate("/dashboard");
-    } catch (error) {
-      setError(await getErrorMessage(error));
+    } catch (err) {
+      setError(err.response?.data?.detail || "Login failed.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <AuthPage
-      title="Welcome Back"
-      subtitle="Sign in to continue to your thyroid analysis dashboard."
-      footer={
-        <>
-          Don't have an account? <Link to="/register">Create one</Link>
-        </>
-      }
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to continue to your ThyroAI dashboard."
     >
-      <form onSubmit={handleSubmit} className="auth-form">
-        {error && <div className="error-box">{error}</div>}
+      {error && <div className="error-box">{error}</div>}
 
-        <label>Email Address</label>
-
+      <form onSubmit={submit} className="auth-form">
+        <label>Email</label>
         <input
           type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@example.com"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
           required
         />
 
         <label>Password</label>
-
-        <PasswordField
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
+        <PasswordInput
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
         />
 
-        <button className="primary-button full-button" disabled={loading}>
+        <button className="primary-btn auth-submit" disabled={loading}>
           {loading ? "Signing in..." : "Sign In →"}
         </button>
       </form>
-    </AuthPage>
+
+      <div className="auth-divider">
+        <span>or</span>
+      </div>
+
+      <p className="auth-switch">
+        Don't have an account? <Link to="/register">Create account</Link>
+      </p>
+
+      <Link className="admin-link" to="/admin-login">
+        Admin Portal →
+      </Link>
+    </AuthLayout>
   );
 }
 
-/* =========================================================
-   REGISTER
-========================================================= */
-
 function Register() {
   const navigate = useNavigate();
-
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({
+    username: "",
+    email: "",
+    password: "",
+  });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
+  const submit = async (e) => {
+    e.preventDefault();
     setError("");
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    if (password.length < 6) {
+    if (form.password.length < 6) {
       setError("Password must contain at least 6 characters.");
       return;
     }
@@ -548,1653 +597,1141 @@ function Register() {
     setLoading(true);
 
     try {
-      await axios.post(`${API_URL}/auth/register`, {
-        username,
-        email,
-        password,
-      });
-
-      alert("Registration successful. Please login.");
-
+      await axios.post(`${API_URL}/auth/register`, form);
       navigate("/login");
-    } catch (error) {
-      setError(await getErrorMessage(error));
+    } catch (err) {
+      setError(err.response?.data?.detail || "Registration failed.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <AuthPage
-      title="Create Your Account"
-      subtitle="Start using AI-powered thyroid analysis."
-      footer={
-        <>
-          Already have an account? <Link to="/login">Sign in</Link>
-        </>
-      }
+    <AuthLayout
+      title="Create account"
+      subtitle="Create your personal ThyroAI account."
     >
-      <form onSubmit={handleSubmit} className="auth-form">
-        {error && <div className="error-box">{error}</div>}
+      {error && <div className="error-box">{error}</div>}
 
+      <form onSubmit={submit} className="auth-form">
         <label>Username</label>
-
         <input
-          type="text"
-          placeholder="Enter username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          placeholder="Your name"
+          value={form.username}
+          onChange={(e) => setForm({ ...form, username: e.target.value })}
           required
         />
 
-        <label>Email Address</label>
-
+        <label>Email</label>
         <input
           type="email"
-          placeholder="Enter email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@example.com"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
           required
         />
 
         <label>Password</label>
-
-        <PasswordField
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
+        <PasswordInput
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          placeholder="Minimum 6 characters"
         />
 
-        <label>Confirm Password</label>
-
-        <PasswordField
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="Confirm password"
-        />
-
-        <button className="primary-button full-button" disabled={loading}>
-          {loading ? "Creating account..." : "Create Account →"}
+        <button className="primary-btn auth-submit" disabled={loading}>
+          {loading ? "Creating..." : "Create Account →"}
         </button>
       </form>
-    </AuthPage>
+
+      <p className="auth-switch">
+        Already have an account? <Link to="/login">Sign in</Link>
+      </p>
+    </AuthLayout>
   );
 }
-
-/* =========================================================
-   AUTH PAGE
-========================================================= */
-
-function AuthPage({ title, subtitle, children, footer }) {
-  return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-logo">🦋</div>
-
-        <h1>{title}</h1>
-
-        <p>{subtitle}</p>
-
-        {children}
-
-        <div className="auth-footer">{footer}</div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
-   ADMIN LOGIN
-========================================================= */
 
 function AdminLogin() {
   const navigate = useNavigate();
-
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-
-  const [loading, setLoading] = useState(false);
+  const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
+  const submit = async (e) => {
+    e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_URL}/auth/admin-login`, {
-        username,
-        password,
-      });
-
-      saveAdmin(response.data);
-      localStorage.removeItem("thyroidUser");
-
+      const res = await axios.post(`${API_URL}/auth/admin-login`, form);
+      localStorage.setItem("thyroidAdmin", JSON.stringify(res.data));
       navigate("/admin");
-    } catch (error) {
-      setError(await getErrorMessage(error));
+    } catch (err) {
+      setError(err.response?.data?.detail || "Invalid admin credentials.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
-    <AuthPage
+    <AuthLayout
       title="Admin Portal"
-      subtitle="Secure access to the ThyroAI administration dashboard."
-      footer={
-        <>
-          User account? <Link to="/login">User Login</Link>
-        </>
-      }
+      subtitle="Secure access to ThyroAI administration."
     >
-      <form onSubmit={handleSubmit} className="auth-form">
-        {error && <div className="error-box">{error}</div>}
+      <div className="admin-login-badge">ADMINISTRATOR ACCESS</div>
 
-        <label>Admin Username</label>
+      {error && <div className="error-box">{error}</div>}
 
+      <form onSubmit={submit} className="auth-form">
+        <label>Username</label>
         <input
-          type="text"
-          placeholder="Enter admin username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          value={form.username}
+          onChange={(e) => setForm({ ...form, username: e.target.value })}
+          placeholder="Admin username"
           required
         />
 
-        <label>Admin Password</label>
-
-        <PasswordField
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Enter admin password"
+        <label>Password</label>
+        <PasswordInput
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
         />
 
-        <button className="primary-button full-button" disabled={loading}>
-          {loading ? "Signing in..." : "Admin Sign In →"}
+        <button className="primary-btn auth-submit" disabled={loading}>
+          {loading ? "Authenticating..." : "Enter Admin Panel →"}
         </button>
-
-        <div className="demo-login">
-          <strong>Demo credentials</strong>
-          <span>Username: admin</span>
-          <span>Password: admin123</span>
-        </div>
       </form>
-    </AuthPage>
+
+      <p className="auth-switch">
+        <Link to="/login">← Back to user login</Link>
+      </p>
+    </AuthLayout>
   );
 }
 
-/* =========================================================
-   USER DASHBOARD
-========================================================= */
-
 function UserDashboard() {
-  const navigate = useNavigate();
   const user = getUser();
-
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.user_id) {
-      return;
-    }
+    if (!user) return;
 
-    async function loadHistory() {
-      try {
-        const response = await axios.get(
-          `${API_URL}/auth/history/${user.user_id}`
-        );
-
-        setHistory(response.data.history || []);
-      } catch {
-        setHistory([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadHistory();
-  }, [user?.user_id]);
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
+    axios
+      .get(`${API_URL}/auth/history/${user.user_id}`)
+      .then((res) => setHistory(res.data.history || []))
+      .catch(() => setHistory([]))
+      .finally(() => setLoading(false));
+  }, [user]);
 
   const latest = history[0];
+  const diseaseCount = history.filter((x) => Number(x.prediction) === 1).length;
+
+  if (loading) return <PageLoader />;
 
   return (
-    <div className="dashboard-page">
-      <section className="dashboard-header">
-        <div>
-          <span className="dashboard-label">USER DASHBOARD</span>
+    <Layout>
+      <div className="dashboard-page">
+        <div className="welcome-row">
+          <div>
+            <span className="section-label">PERSONAL DASHBOARD</span>
+            <h1>
+              Hello, <span>{user?.username}</span> 👋
+            </h1>
+            <p>Monitor your thyroid analysis and prediction history.</p>
+          </div>
 
-          <h1>
-            Welcome, <span>{user.username}</span>
-          </h1>
-
-          <p>
-            Manage your thyroid predictions and understand your AI results.
-          </p>
+          <Link className="primary-btn" to="/predict">
+            + New Prediction
+          </Link>
         </div>
 
-        <button className="primary-button" onClick={() => navigate("/prediction")}>
-          + New Prediction
-        </button>
-      </section>
-
-      <div className="stats-grid">
-        <StatCard
-          icon="🧪"
-          title="Predictions"
-          value={loading ? "..." : history.length}
-        />
-
-        <StatCard
-          icon="📊"
-          title="Model Accuracy"
-          value={`${TEST_ACCURACY}%`}
-        />
-
-        <StatCard
-          icon="🤖"
-          title="Model"
-          value="XGBoost"
-        />
-
-        <StatCard
-          icon="🔬"
-          title="Explainability"
-          value="SHAP + DiCE"
-        />
-      </div>
-
-      <div className="dashboard-grid">
-        <div className="dashboard-card">
-          <div className="card-heading">
-            <div>
-              <span className="small-label">LATEST RESULT</span>
-              <h2>Recent Prediction</h2>
-            </div>
-
-            <span className="card-icon">🩺</span>
-          </div>
-
-          {latest ? (
-            <div className="latest-result">
-              <div
-                className={`result-status ${
-                  latest.prediction === 1 ? "danger" : "success"
-                }`}
-              >
-                {latest.prediction === 1
-                  ? "Thyroid Disease Predicted"
-                  : "Thyroid Disease Not Predicted"}
-              </div>
-
-              <div className="probability-row">
-                <span>Class 0</span>
-                <strong>
-                  {(latest.probability_class_0 * 100).toFixed(2)}%
-                </strong>
-              </div>
-
-              <div className="probability-row">
-                <span>Class 1</span>
-                <strong>
-                  {(latest.probability_class_1 * 100).toFixed(2)}%
-                </strong>
-              </div>
-
-              <button
-                className="secondary-button full-button"
-                onClick={() => navigate("/history")}
-              >
-                View History
-              </button>
-            </div>
-          ) : (
-            <div className="empty-state">
-              <div>🔍</div>
-              <h3>No predictions yet</h3>
-              <p>Start your first thyroid prediction.</p>
-
-              <button
-                className="primary-button"
-                onClick={() => navigate("/prediction")}
-              >
-                Start Prediction
-              </button>
-            </div>
-          )}
+        <div className="dashboard-stats">
+          <DashStat
+            icon="◷"
+            number={history.length}
+            label="Total Predictions"
+          />
+          <DashStat
+            icon="!"
+            number={diseaseCount}
+            label="Positive Results"
+          />
+          <DashStat
+            icon="✓"
+            number={history.length - diseaseCount}
+            label="Negative Results"
+          />
+          <DashStat icon="98" number={`${TEST_ACCURACY}%`} label="Model Accuracy" />
         </div>
 
-        <div className="dashboard-card">
-          <div className="card-heading">
-            <div>
-              <span className="small-label">EXPLAINABLE AI</span>
-              <h2>Understand Your Result</h2>
+        <div className="dashboard-content">
+          <div className="dashboard-main-card">
+            <div className="card-title-row">
+              <div>
+                <span className="section-label">LATEST ANALYSIS</span>
+                <h2>Recent prediction</h2>
+              </div>
+              <Link to="/history">View all →</Link>
             </div>
 
-            <span className="card-icon">💡</span>
+            {latest ? (
+              <PredictionSummary record={latest} />
+            ) : (
+              <div className="empty-dashboard">
+                <div>✦</div>
+                <h3>No predictions yet</h3>
+                <p>Start your first thyroid analysis.</p>
+                <Link className="primary-btn" to="/predict">
+                  Start Prediction
+                </Link>
+              </div>
+            )}
           </div>
 
-          <div className="explain-item">
-            <span>📊</span>
-            <div>
-              <strong>SHAP</strong>
-              <p>See which features influenced the prediction.</p>
+          <div className="dashboard-side-card">
+            <div className="mini-ai-icon">✦</div>
+            <h3>Explainable AI</h3>
+            <p>
+              ThyroAI provides SHAP feature importance and DiCE
+              counterfactual explanations with your prediction.
+            </p>
+
+            <div className="mini-feature">
+              <span>01</span>
+              <b>SHAP</b>
+              <small>Feature impact</small>
+            </div>
+
+            <div className="mini-feature">
+              <span>02</span>
+              <b>DiCE</b>
+              <small>Alternative scenarios</small>
             </div>
           </div>
-
-          <div className="explain-item">
-            <span>🔄</span>
-            <div>
-              <strong>DiCE</strong>
-              <p>Explore possible counterfactual changes.</p>
-            </div>
-          </div>
-
-          <button
-            className="primary-button full-button"
-            onClick={() => navigate("/prediction")}
-          >
-            Run New Analysis
-          </button>
         </div>
       </div>
-    </div>
+    </Layout>
   );
 }
 
-function StatCard({ icon, title, value }) {
+function DashStat({ icon, number, label }) {
   return (
-    <div className="stat-card">
-      <div className="stat-icon">{icon}</div>
-
+    <div className="dash-stat">
+      <div className="dash-stat-icon">{icon}</div>
       <div>
-        <span>{title}</span>
-        <strong>{value}</strong>
+        <strong>{number}</strong>
+        <span>{label}</span>
       </div>
     </div>
   );
 }
 
-/* =========================================================
-   PREDICTION PAGE
-========================================================= */
+function PredictionSummary({ record }) {
+  const positive = Number(record.prediction) === 1;
+  const probability = positive
+    ? Number(record.probability_class_1 || 0) * 100
+    : Number(record.probability_class_0 || 0) * 100;
 
-function PredictionPage() {
+  return (
+    <div className={`prediction-summary ${positive ? "positive" : "negative"}`}>
+      <div className="result-status-icon">{positive ? "!" : "✓"}</div>
+
+      <div className="prediction-summary-main">
+        <span>MODEL RESULT</span>
+        <h3>
+          {positive
+            ? "Thyroid Disease Predicted"
+            : "Thyroid Disease Not Predicted"}
+        </h3>
+        <p>
+          Prediction confidence: <b>{probability.toFixed(2)}%</b>
+        </p>
+      </div>
+
+      <div className="confidence-ring">
+        <strong>{probability.toFixed(0)}%</strong>
+        <small>confidence</small>
+      </div>
+    </div>
+  );
+}
+
+function Predict() {
   const navigate = useNavigate();
   const user = getUser();
-
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  function updateField(name, value) {
-    setForm((previous) => ({
-      ...previous,
-      [name]: value,
+  const update = (key, value) => {
+    setForm((old) => ({
+      ...old,
+      [key]: value,
     }));
-  }
+  };
 
-  function updateNumberField(name, value) {
-    setForm((previous) => ({
-      ...previous,
-      [name]: Number(value),
-    }));
-  }
-
-  async function handlePrediction(event) {
-    event.preventDefault();
-
-    setError("");
+  const submit = async (e) => {
+    e.preventDefault();
     setLoading(true);
+    setError("");
 
     try {
       const payload = {
         ...form,
-        user_id: user.user_id,
+        user_id: user?.user_id,
       };
 
-      const missing = FEATURES.filter(
-        (feature) =>
-          payload[feature] === undefined ||
-          payload[feature] === null ||
-          Number.isNaN(Number(payload[feature]))
+      FEATURES.forEach((key) => {
+        payload[key] = Number(payload[key]);
+      });
+
+      const res = await axios.post(`${API_URL}/predict`, payload);
+
+      localStorage.setItem("latestPrediction", JSON.stringify(res.data));
+
+      navigate("/results", {
+        state: {
+          prediction: res.data,
+          input: payload,
+        },
+      });
+    } catch (err) {
+      setError(
+        err.response?.data?.detail ||
+          "Prediction failed. Please check your values."
       );
-
-      if (missing.length > 0) {
-        throw new Error(
-          `Please provide valid values for: ${missing.join(", ")}`
-        );
-      }
-
-      const [predictionResponse, explanationResponse, counterfactualResponse] =
-        await Promise.all([
-          axios.post(`${API_URL}/predict`, payload),
-          axios.post(`${API_URL}/explain`, payload),
-          axios.post(`${API_URL}/counterfactual`, payload),
-        ]);
-
-      const result = {
-        ...predictionResponse.data,
-        explanation: explanationResponse.data?.explanation || [],
-        counterfactuals:
-          counterfactualResponse.data?.counterfactuals || [],
-        input_data: form,
-        created_at: new Date().toISOString(),
-      };
-
-      localStorage.setItem("latestPrediction", JSON.stringify(result));
-
-      navigate("/results");
-    } catch (error) {
-      setError(await getErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  return (
-    <div className="prediction-page">
-      <div className="prediction-header">
-        <span className="dashboard-label">AI PREDICTION</span>
-
-        <h1>Thyroid Disease Analysis</h1>
-
-        <p>
-          Enter the patient information below. The AI model will analyze the
-          data and provide an explainable prediction.
-        </p>
-      </div>
-
-      {error && <div className="error-box prediction-error">{error}</div>}
-
-      <form onSubmit={handlePrediction}>
-        <PredictionSection
-          title="Patient Information"
-          subtitle="Basic patient characteristics"
-        >
-          <NumberInput
-            label="Age"
-            value={form.age}
-            onChange={(value) => updateNumberField("age", value)}
-            min="1"
-            max="120"
-          />
-
-          <SelectInput
-            label="Sex"
-            value={form.sex}
-            onChange={(value) => updateField("sex", Number(value))}
-            options={[
-              ["0", "Female"],
-              ["1", "Male"],
-            ]}
-          />
-        </PredictionSection>
-
-        <PredictionSection
-          title="Medication & Treatment"
-          subtitle="Previous thyroid-related treatment indicators"
-        >
-          {[
-            "on thyroxine",
-            "query on thyroxine",
-            "on antithyroid medication",
-            "thyroid surgery",
-            "I131 treatment",
-            "lithium",
-          ].map((field) => (
-            <BinaryInput
-              key={field}
-              label={formatFeatureName(field)}
-              value={form[field]}
-              onChange={(value) => updateField(field, Number(value))}
-            />
-          ))}
-        </PredictionSection>
-
-        <PredictionSection
-          title="Clinical Indicators"
-          subtitle="Patient clinical condition indicators"
-        >
-          {[
-            "sick",
-            "pregnant",
-            "query hypothyroid",
-            "query hyperthyroid",
-            "goitre",
-            "tumor",
-            "hypopituitary",
-            "psych",
-          ].map((field) => (
-            <BinaryInput
-              key={field}
-              label={formatFeatureName(field)}
-              value={form[field]}
-              onChange={(value) => updateField(field, Number(value))}
-            />
-          ))}
-        </PredictionSection>
-
-        <PredictionSection
-          title="Thyroid Laboratory Values"
-          subtitle="Enter available thyroid test measurements"
-        >
-          <BinaryInput
-            label="TSH Measured"
-            value={form["TSH measured"]}
-            onChange={(value) =>
-              updateField("TSH measured", Number(value))
-            }
-          />
-
-          <NumberInput
-            label="TSH"
-            value={form.TSH}
-            onChange={(value) => updateNumberField("TSH", value)}
-            step="0.01"
-          />
-
-          <BinaryInput
-            label="T3 Measured"
-            value={form["T3 measured"]}
-            onChange={(value) =>
-              updateField("T3 measured", Number(value))
-            }
-          />
-
-          <BinaryInput
-            label="TT4 Measured"
-            value={form["TT4 measured"]}
-            onChange={(value) =>
-              updateField("TT4 measured", Number(value))
-            }
-          />
-
-          <NumberInput
-            label="TT4"
-            value={form.TT4}
-            onChange={(value) => updateNumberField("TT4", value)}
-            step="0.01"
-          />
-
-          <BinaryInput
-            label="T4U Measured"
-            value={form["T4U measured"]}
-            onChange={(value) =>
-              updateField("T4U measured", Number(value))
-            }
-          />
-
-          <NumberInput
-            label="T4U"
-            value={form.T4U}
-            onChange={(value) => updateNumberField("T4U", value)}
-            step="0.01"
-          />
-
-          <BinaryInput
-            label="FTI Measured"
-            value={form["FTI measured"]}
-            onChange={(value) =>
-              updateField("FTI measured", Number(value))
-            }
-          />
-
-          <NumberInput
-            label="FTI"
-            value={form.FTI}
-            onChange={(value) => updateNumberField("FTI", value)}
-            step="0.01"
-          />
-        </PredictionSection>
-
-        <div className="prediction-submit">
-          <button
-            type="submit"
-            className="primary-button prediction-button"
-            disabled={loading}
-          >
-            {loading
-              ? "Analyzing Patient Data..."
-              : "🔬 Predict Thyroid Disease"}
-          </button>
-
-          <p>
-            Your prediction includes XGBoost classification, SHAP explanation
-            and DiCE counterfactual analysis.
-          </p>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-/* =========================================================
-   PREDICTION INPUT COMPONENTS
-========================================================= */
-
-function PredictionSection({ title, subtitle, children }) {
-  return (
-    <section className="prediction-section">
-      <div className="prediction-section-heading">
-        <h2>{title}</h2>
-        <p>{subtitle}</p>
-      </div>
-
-      <div className="prediction-fields">{children}</div>
-    </section>
-  );
-}
-
-function NumberInput({
-  label,
-  value,
-  onChange,
-  min,
-  max,
-  step = "1",
-}) {
-  return (
-    <div className="form-field">
-      <label>{label}</label>
-
-      <input
-        type="number"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        min={min}
-        max={max}
-        step={step}
-        required
-      />
-    </div>
-  );
-}
-
-function SelectInput({ label, value, onChange, options }) {
-  return (
-    <div className="form-field">
-      <label>{label}</label>
-
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required
-      >
-        {options.map(([optionValue, optionLabel]) => (
-          <option key={optionValue} value={optionValue}>
-            {optionLabel}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function BinaryInput({ label, value, onChange }) {
-  return (
-    <div className="form-field">
-      <label>{label}</label>
-
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required
-      >
-        <option value={0}>No / 0</option>
-        <option value={1}>Yes / 1</option>
-      </select>
-    </div>
-  );
-}
-
-/* =========================================================
-   RESULTS PAGE
-========================================================= */
-
-function ResultsPage() {
-  const navigate = useNavigate();
-
-  const [result, setResult] = useState(null);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("latestPrediction");
-
-      if (stored) {
-        setResult(JSON.parse(stored));
-      }
-    } catch {
-      setResult(null);
-    }
-  }, []);
-
-  if (!result) {
-    return (
-      <div className="empty-page">
-        <div className="empty-state large">
-          <div>📊</div>
-          <h1>No Prediction Available</h1>
-          <p>Run a prediction first to view the results.</p>
-
-          <button
-            className="primary-button"
-            onClick={() => navigate("/prediction")}
-          >
-            Start Prediction
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const predictionIsPositive = Number(result.prediction) === 1;
-
-  const probabilityData = [
+  const sections = [
     {
-      name: "Class 0",
-      probability: Number(
-        (result.probability_class_0 * 100).toFixed(2)
-      ),
+      title: "Basic Information",
+      icon: "01",
+      fields: ["age", "sex"],
     },
     {
-      name: "Class 1",
-      probability: Number(
-        (result.probability_class_1 * 100).toFixed(2)
-      ),
+      title: "Medical History",
+      icon: "02",
+      fields: [
+        "on thyroxine",
+        "query on thyroxine",
+        "on antithyroid medication",
+        "sick",
+        "pregnant",
+        "thyroid surgery",
+        "I131 treatment",
+      ],
+    },
+    {
+      title: "Thyroid Symptoms",
+      icon: "03",
+      fields: [
+        "query hypothyroid",
+        "query hyperthyroid",
+        "lithium",
+        "goitre",
+        "tumor",
+        "hypopituitary",
+        "psych",
+      ],
+    },
+    {
+      title: "Laboratory Measurements",
+      icon: "04",
+      fields: [
+        "TSH measured",
+        "TSH",
+        "T3 measured",
+        "TT4 measured",
+        "TT4",
+        "T4U measured",
+        "T4U",
+        "FTI measured",
+        "FTI",
+      ],
     },
   ];
 
-  const shapData = (result.explanation || []).map((item) => ({
-    feature: formatFeatureName(item.feature),
-    value: Number(Number(item.shap_value).toFixed(4)),
-  }));
-
   return (
-    <div className="results-page">
-      <div className="results-header">
-        <span className="dashboard-label">ANALYSIS COMPLETE</span>
-
-        <h1>Prediction Results</h1>
-
-        <p>
-          Your thyroid disease prediction and explainable AI analysis are
-          ready.
-        </p>
-      </div>
-
-      <section
-        className={`prediction-result-card ${
-          predictionIsPositive ? "positive-result" : "negative-result"
-        }`}
-      >
-        <div className="result-icon">
-          {predictionIsPositive ? "⚠️" : "✓"}
-        </div>
-
-        <div>
-          <span className="small-label">MODEL PREDICTION</span>
-
-          <h2>{result.message}</h2>
-
-          <p>
-            Model prediction:{" "}
-            <strong>Class {result.prediction}</strong>
-          </p>
-        </div>
-      </section>
-
-      <div className="results-stats">
-        <div className="result-stat">
-          <span>Class 0 Probability</span>
-          <strong>
-            {(result.probability_class_0 * 100).toFixed(2)}%
-          </strong>
-        </div>
-
-        <div className="result-stat">
-          <span>Class 1 Probability</span>
-          <strong>
-            {(result.probability_class_1 * 100).toFixed(2)}%
-          </strong>
-        </div>
-
-        <div className="result-stat">
-          <span>Model Accuracy</span>
-          <strong>{TEST_ACCURACY}%</strong>
-        </div>
-      </div>
-
-      <div className="results-grid">
-        <div className="result-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="small-label">MODEL CONFIDENCE</span>
-              <h2>Prediction Probability</h2>
-            </div>
-          </div>
-
-          <div className="chart-container">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={probabilityData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
-                <Bar dataKey="probability" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="result-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="small-label">MODEL</span>
-              <h2>XGBoost</h2>
-            </div>
-          </div>
-
-          <div className="model-info">
-            <div>
-              <span>Test Accuracy</span>
-              <strong>{TEST_ACCURACY}%</strong>
-            </div>
-
-            <div>
-              <span>Explainability</span>
-              <strong>SHAP</strong>
-            </div>
-
-            <div>
-              <span>Counterfactuals</span>
-              <strong>DiCE</strong>
-            </div>
-
-            <div>
-              <span>Prediction Class</span>
-              <strong>{result.prediction}</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <section className="result-panel">
-        <div className="panel-heading">
+    <Layout>
+      <div className="prediction-page">
+        <div className="page-heading">
           <div>
-            <span className="small-label">EXPLAINABLE AI</span>
-            <h2>SHAP Feature Importance</h2>
-          </div>
-        </div>
-
-        {shapData.length > 0 ? (
-          <div className="chart-container">
-            <ResponsiveContainer width="100%" height={420}>
-              <BarChart
-                data={shapData}
-                layout="vertical"
-                margin={{ left: 30, right: 30 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis
-                  type="category"
-                  dataKey="feature"
-                  width={160}
-                />
-                <Tooltip />
-                <Bar dataKey="value" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <p>No SHAP explanation available.</p>
-        )}
-      </section>
-
-      <section className="result-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="small-label">COUNTERFACTUAL AI</span>
-            <h2>DiCE Counterfactuals</h2>
-          </div>
-        </div>
-
-        {result.counterfactuals?.length > 0 ? (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  {Object.keys(result.counterfactuals[0]).map((key) => (
-                    <th key={key}>{formatFeatureName(key)}</th>
-                  ))}
-                </tr>
-              </thead>
-
-              <tbody>
-                {result.counterfactuals.map((row, index) => (
-                  <tr key={index}>
-                    {Object.keys(result.counterfactuals[0]).map((key) => (
-                      <td key={key}>
-                        {String(row[key])}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <div>🔄</div>
-            <h3>No counterfactuals generated</h3>
+            <span className="section-label">AI ANALYSIS</span>
+            <h1>New thyroid prediction</h1>
             <p>
-              The model could not generate a valid opposite-class
-              counterfactual for this input.
+              Enter the patient's clinical information to generate an AI
+              prediction.
             </p>
           </div>
-        )}
-      </section>
 
-      <div className="result-actions">
-        <button
-          className="primary-button"
-          onClick={() => navigate("/prediction")}
-        >
-          + New Prediction
-        </button>
+          <div className="accuracy-badge">
+            <span>●</span>
+            Model accuracy {TEST_ACCURACY}%
+          </div>
+        </div>
 
-        <button
-          className="secondary-button"
-          onClick={() => navigate("/history")}
-        >
-          View History
-        </button>
+        {error && <div className="error-box page-error">{error}</div>}
+
+        <form onSubmit={submit}>
+          <div className="prediction-form-card">
+            {sections.map((section) => (
+              <div className="form-section-new" key={section.title}>
+                <div className="form-section-heading">
+                  <span>{section.icon}</span>
+                  <div>
+                    <h2>{section.title}</h2>
+                    <p>Provide the required information</p>
+                  </div>
+                </div>
+
+                <div className="fields-grid">
+                  {section.fields.map((field) => (
+                    <div className="field-new" key={field}>
+                      <label>{fieldLabels[field]}</label>
+
+                      {binaryFields.includes(field) ? (
+                        <select
+                          value={form[field]}
+                          onChange={(e) =>
+                            update(field, Number(e.target.value))
+                          }
+                        >
+                          <option value={0}>No / 0</option>
+                          <option value={1}>Yes / 1</option>
+                        </select>
+                      ) : field === "sex" ? (
+                        <select
+                          value={form[field]}
+                          onChange={(e) =>
+                            update(field, Number(e.target.value))
+                          }
+                        >
+                          <option value={0}>Female (0)</option>
+                          <option value={1}>Male (1)</option>
+                        </select>
+                      ) : (
+                        <input
+                          type="number"
+                          step="any"
+                          value={form[field]}
+                          onChange={(e) =>
+                            update(field, Number(e.target.value))
+                          }
+                          required
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div className="form-bottom">
+              <div>
+                <b>Ready to analyze?</b>
+                <p>
+                  Your input will be processed using the XGBoost model.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="primary-btn prediction-submit"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="button-spinner" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>Run AI Prediction →</>
+                )}
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
-    </div>
+    </Layout>
   );
 }
 
-/* =========================================================
-   USER HISTORY
-========================================================= */
+function Results() {
+  const location = useLocation();
+  const navigate = useNavigate();
 
-function UserHistory() {
-  const user = getUser();
+  const prediction = location.state?.prediction;
+  const input = location.state?.input;
 
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [shap, setShap] = useState([]);
+  const [counterfactuals, setCounterfactuals] = useState([]);
+  const [loadingAI, setLoadingAI] = useState(true);
 
   useEffect(() => {
-    const userId = user?.user_id;
-
-    if (!userId) {
-      setLoading(false);
+    if (!prediction || !input) {
+      navigate("/predict");
       return;
     }
 
-    async function loadHistory() {
+    const loadExplainability = async () => {
       try {
-        const response = await axios.get(
-          `${API_URL}/auth/history/${userId}`
-        );
+        const [shapRes, cfRes] = await Promise.allSettled([
+          axios.post(`${API_URL}/explain`, input),
+          axios.post(`${API_URL}/counterfactual`, input),
+        ]);
 
-        setHistory(response.data.history || []);
-      } catch (error) {
-        setError(await getErrorMessage(error));
+        if (shapRes.status === "fulfilled") {
+          setShap(shapRes.value.data.explanation || []);
+        }
+
+        if (cfRes.status === "fulfilled") {
+          setCounterfactuals(cfRes.value.data.counterfactuals || []);
+        }
       } finally {
-        setLoading(false);
+        setLoadingAI(false);
       }
-    }
+    };
 
-    loadHistory();
-  }, [user?.user_id]);
+    loadExplainability();
+  }, [prediction, input, navigate]);
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
+  if (!prediction) return <PageLoader />;
+
+  const positive = Number(prediction.prediction) === 1;
+  const p0 = Number(prediction.probability_class_0 || 0) * 100;
+  const p1 = Number(prediction.probability_class_1 || 0) * 100;
+
+  const chartData = shap.slice(0, 8).map((item) => ({
+    feature: fieldLabels[item.feature] || item.feature,
+    value: Number(item.shap_value),
+  }));
 
   return (
-    <div className="history-page">
-      <div className="dashboard-header">
-        <div>
-          <span className="dashboard-label">PRIVATE HISTORY</span>
-          <h1>My Prediction History</h1>
-          <p>Only your prediction records are displayed here.</p>
+    <Layout>
+      <div className="results-page">
+        <div className="result-top">
+          <button className="back-btn" onClick={() => navigate("/predict")}>
+            ← New Prediction
+          </button>
+
+          <span className="section-label">ANALYSIS COMPLETE</span>
         </div>
 
-        <Link to="/prediction" className="primary-button">
-          + New Prediction
-        </Link>
-      </div>
+        <div className={`result-main ${positive ? "result-positive" : "result-negative"}`}>
+          <div className="result-main-icon">{positive ? "!" : "✓"}</div>
 
-      {error && <div className="error-box">{error}</div>}
+          <span className="result-overline">MODEL PREDICTION</span>
 
-      <div className="history-card">
-        {loading ? (
-          <div className="loading-state">
-            Loading prediction history...
+          <h1>
+            {positive
+              ? "Thyroid Disease Predicted"
+              : "Thyroid Disease Not Predicted"}
+          </h1>
+
+          <p>
+            {positive
+              ? "The model predicts Class 1 based on the submitted clinical features."
+              : "The model predicts Class 0 based on the submitted clinical features."}
+          </p>
+
+          <div className="result-class">
+            Predicted Class <strong>{prediction.prediction}</strong>
           </div>
-        ) : history.length === 0 ? (
-          <div className="empty-state">
-            <div>📜</div>
-            <h2>No History Yet</h2>
-            <p>Your completed predictions will appear here.</p>
+        </div>
 
-            <Link to="/prediction" className="primary-button">
+        <div className="probability-section">
+          <div className="prob-card">
+            <div className="prob-top">
+              <span>Class 0</span>
+              <strong>{p0.toFixed(2)}%</strong>
+            </div>
+            <div className="prob-track">
+              <div style={{ width: `${p0}%` }} />
+            </div>
+            <small>Thyroid disease not predicted</small>
+          </div>
+
+          <div className="prob-card">
+            <div className="prob-top">
+              <span>Class 1</span>
+              <strong>{p1.toFixed(2)}%</strong>
+            </div>
+            <div className="prob-track">
+              <div style={{ width: `${p1}%` }} />
+            </div>
+            <small>Thyroid disease predicted</small>
+          </div>
+        </div>
+
+        <div className="results-grid">
+          <section className="result-card">
+            <div className="result-card-header">
+              <div>
+                <span className="section-label">EXPLAINABILITY</span>
+                <h2>SHAP Feature Impact</h2>
+              </div>
+              <span className="result-card-icon">✦</span>
+            </div>
+
+            {loadingAI ? (
+              <div className="small-loader">
+                <div className="loader-ring" />
+                <span>Calculating feature impact...</span>
+              </div>
+            ) : shap.length ? (
+              <div className="chart-box">
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart
+                    data={chartData}
+                    layout="vertical"
+                    margin={{ left: 20, right: 15 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" />
+                    <YAxis
+                      dataKey="feature"
+                      type="category"
+                      width={110}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="value" radius={[0, 5, 5, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="empty-small">No SHAP explanation available.</div>
+            )}
+          </section>
+
+          <section className="result-card">
+            <div className="result-card-header">
+              <div>
+                <span className="section-label">COUNTERFACTUAL AI</span>
+                <h2>DiCE Alternatives</h2>
+              </div>
+              <span className="result-card-icon">↔</span>
+            </div>
+
+            <p className="result-description">
+              Counterfactual examples show alternative feature combinations
+              generated by the model.
+            </p>
+
+            {loadingAI ? (
+              <div className="small-loader">
+                <div className="loader-ring" />
+                <span>Generating alternatives...</span>
+              </div>
+            ) : counterfactuals.length ? (
+              <div className="cf-list">
+                {counterfactuals.map((cf, index) => (
+                  <div className="cf-item" key={index}>
+                    <span>{index + 1}</span>
+                    <div>
+                      {Object.entries(cf)
+                        .slice(0, 4)
+                        .map(([key, value]) => (
+                          <p key={key}>
+                            <b>{fieldLabels[key] || key}:</b>{" "}
+                            {String(value)}
+                          </p>
+                        ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-small">
+                Counterfactuals could not be generated for this prediction.
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </Layout>
+  );
+}
+
+function History() {
+  const user = getUser();
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    axios
+      .get(`${API_URL}/auth/history/${user.user_id}`)
+      .then((res) => setHistory(res.data.history || []))
+      .catch(() => setHistory([]))
+      .finally(() => setLoading(false));
+  }, [user]);
+
+  if (loading) return <PageLoader />;
+
+  return (
+    <Layout>
+      <div className="history-page">
+        <div className="page-heading">
+          <div>
+            <span className="section-label">YOUR RECORDS</span>
+            <h1>Prediction history</h1>
+            <p>Review your previous thyroid analysis results.</p>
+          </div>
+
+          <Link className="primary-btn" to="/predict">
+            + New Prediction
+          </Link>
+        </div>
+
+        {history.length === 0 ? (
+          <div className="history-empty">
+            <div>◷</div>
+            <h2>No history yet</h2>
+            <p>Your completed predictions will appear here.</p>
+            <Link className="primary-btn" to="/predict">
               Start Prediction
             </Link>
           </div>
         ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Prediction</th>
-                  <th>Class 0</th>
-                  <th>Class 1</th>
-                </tr>
-              </thead>
+          <div className="history-list">
+            {history.map((item) => {
+              const positive = Number(item.prediction) === 1;
+              const confidence =
+                (positive
+                  ? Number(item.probability_class_1 || 0)
+                  : Number(item.probability_class_0 || 0)) * 100;
 
-              <tbody>
-                {history.map((record) => (
-                  <tr key={record.id}>
-                    <td>
-                      {record.created_at
-                        ? new Date(record.created_at).toLocaleString()
-                        : "—"}
-                    </td>
+              return (
+                <div className="history-card" key={item.id}>
+                  <div
+                    className={`history-status ${
+                      positive ? "positive-status" : "negative-status"
+                    }`}
+                  >
+                    {positive ? "!" : "✓"}
+                  </div>
 
-                    <td>
-                      <span
-                        className={`history-badge ${
-                          record.prediction === 1
-                            ? "history-danger"
-                            : "history-success"
-                        }`}
-                      >
-                        {record.prediction === 1
-                          ? "Disease Predicted"
-                          : "Not Predicted"}
-                      </span>
-                    </td>
+                  <div className="history-info">
+                    <span className="history-date">
+                      {item.created_at
+                        ? new Date(item.created_at).toLocaleString()
+                        : "Prediction"}
+                    </span>
+                    <h3>
+                      {positive
+                        ? "Thyroid Disease Predicted"
+                        : "Thyroid Disease Not Predicted"}
+                    </h3>
+                    <p>Model Class {item.prediction}</p>
+                  </div>
 
-                    <td>
-                      {(record.probability_class_0 * 100).toFixed(2)}%
-                    </td>
-
-                    <td>
-                      {(record.probability_class_1 * 100).toFixed(2)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  <div className="history-confidence">
+                    <strong>{confidence.toFixed(1)}%</strong>
+                    <span>confidence</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
-    </div>
+    </Layout>
   );
 }
 
-/* =========================================================
-   ADMIN DASHBOARD
-========================================================= */
-
 function AdminDashboard() {
+  const navigate = useNavigate();
   const admin = getAdmin();
 
+  const [file, setFile] = useState(null);
+  const [dataset, setDataset] = useState(null);
   const [history, setHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
-
-  const [datasetFile, setDatasetFile] = useState(null);
-  const [datasetInfo, setDatasetInfo] = useState(null);
   const [uploading, setUploading] = useState(false);
-
-  const [preprocessing, setPreprocessing] = useState(false);
-  const [algorithmRunning, setAlgorithmRunning] = useState(false);
-
-  const [preprocessStatus, setPreprocessStatus] = useState("");
-  const [algorithmStatus, setAlgorithmStatus] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (!admin) {
-      return;
-    }
+    axios
+      .get(`${API_URL}/admin/history`)
+      .then((res) => setHistory(res.data.history || []))
+      .catch(() => setHistory([]));
+  }, []);
 
-    loadAdminHistory();
-  }, [admin]);
+  const logout = () => {
+    localStorage.removeItem("thyroidAdmin");
+    navigate("/admin-login");
+  };
 
-  async function loadAdminHistory() {
-    setLoadingHistory(true);
-
-    try {
-      const response = await axios.get(`${API_URL}/admin/history`);
-
-      setHistory(response.data.history || []);
-    } catch {
-      setHistory([]);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }
-
-  async function uploadDataset() {
-    if (!datasetFile) {
-      alert("Please select a CSV file first.");
+  const upload = async () => {
+    if (!file) {
+      setMessage("Please select a CSV file first.");
       return;
     }
 
     const formData = new FormData();
-
-    formData.append("file", datasetFile);
+    formData.append("file", file);
 
     setUploading(true);
+    setMessage("");
 
     try {
-      const response = await axios.post(
+      const res = await axios.post(
         `${API_URL}/admin/upload-dataset`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
+        formData
       );
 
-      setDatasetInfo(response.data);
-      alert("Dataset uploaded successfully.");
-    } catch (error) {
-      alert(await getErrorMessage(error));
+      setDataset(res.data);
+      setMessage("Dataset uploaded successfully.");
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Upload failed.");
     } finally {
       setUploading(false);
     }
-  }
+  };
 
-  function preprocessDataset() {
-    if (!datasetInfo) {
-      alert("Upload a dataset first.");
-      return;
-    }
-
-    setPreprocessing(true);
-    setPreprocessStatus("");
+  const runProcess = () => {
+    setProcessing(true);
+    setMessage("");
 
     setTimeout(() => {
-      setPreprocessing(false);
-      setPreprocessStatus(
-        "Dataset preprocessing workflow completed successfully."
-      );
-    }, 1500);
-  }
+      setProcessing(false);
+      setMessage("Dataset preprocessing completed.");
+    }, 1600);
+  };
 
-  function applyAlgorithm() {
-    setAlgorithmRunning(true);
-    setAlgorithmStatus("");
-
-    setTimeout(() => {
-      setAlgorithmRunning(false);
-      setAlgorithmStatus(
-        "XGBoost analysis completed using the trained model."
-      );
-    }, 1500);
-  }
-
-  if (!admin) {
-    return <Navigate to="/admin-login" replace />;
-  }
-
-  const diseaseCount = history.filter(
-    (item) => Number(item.prediction) === 1
-  ).length;
-
-  const noDiseaseCount = history.filter(
-    (item) => Number(item.prediction) === 0
-  ).length;
+  const comparisonData = [
+    { model: "XGBoost", accuracy: 98.99 },
+    { model: "Random Forest", accuracy: 97.8 },
+    { model: "Decision Tree", accuracy: 95.6 },
+    { model: "Logistic Regression", accuracy: 93.7 },
+  ];
 
   return (
     <div className="admin-page">
-      <div className="admin-header">
-        <div>
-          <span className="dashboard-label">ADMIN CONTROL CENTER</span>
+      <aside className="admin-sidebar">
+        <Logo />
 
-          <h1>ThyroAI Administration</h1>
-
-          <p>
-            Manage datasets, model analysis and all prediction records.
-          </p>
+        <div className="admin-profile">
+          <div>⚙</div>
+          <section>
+            <b>{admin?.username || "admin"}</b>
+            <span>Administrator</span>
+          </section>
         </div>
 
-        <button className="nav-logout" onClick={logoutAdmin}>
-          Logout
+        <div className="admin-nav">
+          <a href="#overview">▦ Overview</a>
+          <a href="#dataset">▣ Dataset</a>
+          <a href="#models">⌁ Models</a>
+          <a href="#history">◷ Predictions</a>
+        </div>
+
+        <button className="admin-logout" onClick={logout}>
+          ↪ Logout
         </button>
-      </div>
+      </aside>
 
-      <div className="stats-grid">
-        <StatCard
-          icon="👥"
-          title="Total Predictions"
-          value={loadingHistory ? "..." : history.length}
-        />
+      <main className="admin-content">
+        <div className="admin-mobile-top">
+          <Logo />
+          <button onClick={logout}>Logout</button>
+        </div>
 
-        <StatCard
-          icon="⚠️"
-          title="Disease Predicted"
-          value={loadingHistory ? "..." : diseaseCount}
-        />
+        <div className="admin-heading" id="overview">
+          <div>
+            <span className="section-label">ADMIN CONSOLE</span>
+            <h1>System overview</h1>
+            <p>Manage your ThyroAI machine learning platform.</p>
+          </div>
+          <span className="live-badge">
+            <i /> System Online
+          </span>
+        </div>
 
-        <StatCard
-          icon="✓"
-          title="Not Predicted"
-          value={loadingHistory ? "..." : noDiseaseCount}
-        />
+        {message && <div className="success-box">{message}</div>}
 
-        <StatCard
-          icon="🎯"
-          title="Test Accuracy"
-          value={`${TEST_ACCURACY}%`}
-        />
-      </div>
+        <div className="admin-stats">
+          <DashStat icon="◎" number={history.length} label="Predictions" />
+          <DashStat icon="▣" number={dataset?.rows || "—"} label="Dataset Rows" />
+          <DashStat icon="⌁" number={`${TEST_ACCURACY}%`} label="XGBoost Accuracy" />
+          <DashStat icon="●" number="Online" label="API Status" />
+        </div>
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div className="admin-card-header">
-            <div className="admin-icon">📁</div>
-
+        <section className="admin-panel" id="dataset">
+          <div className="admin-panel-heading">
             <div>
-              <h2>Dataset Management</h2>
+              <span className="section-label">DATA MANAGEMENT</span>
+              <h2>Dataset management</h2>
               <p>Upload a CSV dataset for analysis.</p>
+            </div>
+            <span className="panel-number">01</span>
+          </div>
+
+          <div className="upload-grid">
+            <div className="upload-zone">
+              <div className="upload-cloud">↑</div>
+              <h3>Upload dataset</h3>
+              <p>CSV files only</p>
+
+              <label className="file-button">
+                Choose CSV
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => setFile(e.target.files[0])}
+                />
+              </label>
+
+              {file && <div className="selected-file">✓ {file.name}</div>}
+
+              <button
+                className="primary-btn"
+                onClick={upload}
+                disabled={uploading}
+              >
+                {uploading ? "Uploading..." : "Upload Dataset"}
+              </button>
+            </div>
+
+            <div className="dataset-info">
+              <h3>Dataset information</h3>
+
+              {dataset ? (
+                <>
+                  <InfoRow label="Filename" value={dataset.filename} />
+                  <InfoRow label="Rows" value={dataset.rows} />
+                  <InfoRow label="Columns" value={dataset.columns} />
+                </>
+              ) : (
+                <div className="dataset-placeholder">
+                  <span>▣</span>
+                  <p>No dataset uploaded during this session.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="admin-panel">
+          <div className="admin-panel-heading">
+            <div>
+              <span className="section-label">ML PIPELINE</span>
+              <h2>Preprocess & model</h2>
+              <p>Manage the machine learning workflow.</p>
+            </div>
+            <span className="panel-number">02</span>
+          </div>
+
+          <div className="pipeline">
+            <div className="pipeline-step completed">
+              <span>✓</span>
+              <div>
+                <b>Dataset</b>
+                <small>Input data</small>
+              </div>
+            </div>
+
+            <div className="pipeline-line" />
+
+            <div className={`pipeline-step ${processing ? "processing" : ""}`}>
+              <span>02</span>
+              <div>
+                <b>Preprocess</b>
+                <small>Clean & transform</small>
+              </div>
+            </div>
+
+            <div className="pipeline-line" />
+
+            <div className="pipeline-step">
+              <span>03</span>
+              <div>
+                <b>XGBoost</b>
+                <small>Prediction model</small>
+              </div>
             </div>
           </div>
 
-          <div className="upload-area">
-            <div className="upload-icon">📤</div>
+          <div className="admin-action-row">
+            <button className="secondary-btn" onClick={runProcess}>
+              {processing ? "Processing..." : "Preprocess Dataset"}
+            </button>
 
-            <h3>Upload Dataset</h3>
-
-            <p>CSV files only</p>
-
-            <input
-              type="file"
-              accept=".csv"
-              onChange={(event) =>
-                setDatasetFile(event.target.files?.[0] || null)
-              }
-            />
-
-            {datasetFile && (
-              <div className="selected-file">
-                Selected: <strong>{datasetFile.name}</strong>
-              </div>
-            )}
-
-            <button
-              className="primary-button full-button"
-              onClick={uploadDataset}
-              disabled={uploading}
-            >
-              {uploading ? "Uploading..." : "Upload Dataset"}
+            <button className="primary-btn">
+              Apply XGBoost Model
             </button>
           </div>
+        </section>
 
-          {datasetInfo && (
-            <div className="dataset-info">
-              <h3>Dataset Information</h3>
+        <section className="admin-panel" id="models">
+          <div className="admin-panel-heading">
+            <div>
+              <span className="section-label">MODEL ANALYTICS</span>
+              <h2>Model comparison</h2>
+              <p>Accuracy comparison for the current project.</p>
+            </div>
+            <span className="panel-number">03</span>
+          </div>
 
-              <div className="dataset-stats">
-                <div>
-                  <span>Rows</span>
-                  <strong>{datasetInfo.rows}</strong>
-                </div>
+          <div className="admin-chart">
+            <ResponsiveContainer width="100%" height={330}>
+              <BarChart data={comparisonData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="model" tick={{ fontSize: 12 }} />
+                <YAxis domain={[85, 100]} />
+                <Tooltip />
+                <Bar dataKey="accuracy" radius={[7, 7, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
-                <div>
-                  <span>Columns</span>
-                  <strong>{datasetInfo.columns}</strong>
-                </div>
-              </div>
+          <div className="model-note">
+            <b>Note:</b> XGBoost accuracy is the measured project result.
+            Other displayed values are reference comparison values and should
+            be replaced with measured results when those models are actually
+            trained.
+          </div>
+        </section>
 
-              {datasetInfo.column_names?.length > 0 && (
-                <div className="column-list">
-                  {datasetInfo.column_names.map((column) => (
-                    <span key={column}>{column}</span>
-                  ))}
-                </div>
-              )}
+        <section className="admin-panel" id="history">
+          <div className="admin-panel-heading">
+            <div>
+              <span className="section-label">USER ACTIVITY</span>
+              <h2>All prediction history</h2>
+              <p>Only administrators can view all users' prediction records.</p>
+            </div>
+            <span className="panel-number">04</span>
+          </div>
+
+          {history.length === 0 ? (
+            <div className="admin-empty">No prediction records available.</div>
+          ) : (
+            <div className="admin-history">
+              {history.map((item) => {
+                const positive = Number(item.prediction) === 1;
+
+                return (
+                  <div className="admin-history-row" key={item.id}>
+                    <div className="admin-avatar">
+                      {item.username?.charAt(0).toUpperCase() || "U"}
+                    </div>
+
+                    <div className="admin-user-info">
+                      <b>{item.username}</b>
+                      <span>{item.email}</span>
+                    </div>
+
+                    <div className="admin-result">
+                      <span className={positive ? "positive" : "negative"}>
+                        {positive ? "Disease Predicted" : "Not Predicted"}
+                      </span>
+                    </div>
+
+                    <div className="admin-date">
+                      {item.created_at
+                        ? new Date(item.created_at).toLocaleString()
+                        : "—"}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
-
-        <section className="admin-card">
-          <div className="admin-card-header">
-            <div className="admin-icon">⚙️</div>
-
-            <div>
-              <h2>ML Pipeline</h2>
-              <p>Manage the machine-learning workflow.</p>
-            </div>
-          </div>
-
-          <div className="pipeline-step">
-            <div className="step-number">1</div>
-
-            <div className="step-content">
-              <h3>Preprocess Dataset</h3>
-              <p>
-                Prepare and validate the uploaded dataset.
-              </p>
-
-              <button
-                className="secondary-button"
-                onClick={preprocessDataset}
-                disabled={preprocessing}
-              >
-                {preprocessing
-                  ? "Processing..."
-                  : "Preprocess Dataset"}
-              </button>
-
-              {preprocessStatus && (
-                <div className="success-box">
-                  {preprocessStatus}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="pipeline-step">
-            <div className="step-number">2</div>
-
-            <div className="step-content">
-              <h3>Apply XGBoost</h3>
-              <p>
-                Run the trained XGBoost model analysis.
-              </p>
-
-              <button
-                className="secondary-button"
-                onClick={applyAlgorithm}
-                disabled={algorithmRunning}
-              >
-                {algorithmRunning
-                  ? "Running XGBoost..."
-                  : "Apply XGBoost"}
-              </button>
-
-              {algorithmStatus && (
-                <div className="success-box">
-                  {algorithmStatus}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="accuracy-display">
-            <span>Current Test Accuracy</span>
-            <strong>{TEST_ACCURACY}%</strong>
-            <small>XGBoost test-set result</small>
-          </div>
-        </section>
-      </div>
-
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-icon">📊</div>
-
-          <div>
-            <h2>Model Comparison</h2>
-            <p>
-              Reference comparison of commonly used classification models.
-            </p>
-          </div>
-        </div>
-
-        <AdminComparisonChart />
-      </section>
-
-      <section className="admin-card">
-        <div className="admin-card-header">
-          <div className="admin-icon">👥</div>
-
-          <div>
-            <h2>All User Prediction History</h2>
-            <p>
-              Admin-only view of prediction records from every registered
-              user.
-            </p>
-          </div>
-
-          <button
-            className="secondary-button"
-            onClick={loadAdminHistory}
-          >
-            Refresh
-          </button>
-        </div>
-
-        {loadingHistory ? (
-          <div className="loading-state">
-            Loading all prediction records...
-          </div>
-        ) : history.length === 0 ? (
-          <div className="empty-state">
-            <div>📜</div>
-            <h3>No Prediction Records</h3>
-            <p>User predictions will appear here.</p>
-          </div>
-        ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>User</th>
-                  <th>Email</th>
-                  <th>Prediction</th>
-                  <th>Class 0</th>
-                  <th>Class 1</th>
-                  <th>Date</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {history.map((record) => (
-                  <tr key={record.id}>
-                    <td>{record.id}</td>
-
-                    <td>
-                      <strong>{record.username}</strong>
-                    </td>
-
-                    <td>{record.email}</td>
-
-                    <td>
-                      <span
-                        className={`history-badge ${
-                          Number(record.prediction) === 1
-                            ? "history-danger"
-                            : "history-success"
-                        }`}
-                      >
-                        {Number(record.prediction) === 1
-                          ? "Disease"
-                          : "No Disease"}
-                      </span>
-                    </td>
-
-                    <td>
-                      {(
-                        Number(record.probability_class_0) * 100
-                      ).toFixed(2)}
-                      %
-                    </td>
-
-                    <td>
-                      {(
-                        Number(record.probability_class_1) * 100
-                      ).toFixed(2)}
-                      %
-                    </td>
-
-                    <td>
-                      {record.created_at
-                        ? new Date(
-                            record.created_at
-                          ).toLocaleString()
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      </main>
     </div>
   );
 }
 
-/* =========================================================
-   ADMIN COMPARISON
-========================================================= */
-
-function AdminComparisonChart() {
-  const data = useMemo(
-    () => [
-      {
-        name: "XGBoost",
-        accuracy: 98.99,
-      },
-      {
-        name: "Random Forest",
-        accuracy: 97.8,
-      },
-      {
-        name: "Decision Tree",
-        accuracy: 95.6,
-      },
-      {
-        name: "Logistic Regression",
-        accuracy: 93.7,
-      },
-    ],
-    []
-  );
-
+function InfoRow({ label, value }) {
   return (
-    <div className="chart-container admin-chart">
-      <ResponsiveContainer width="100%" height={380}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-
-          <XAxis dataKey="name" />
-
-          <YAxis domain={[80, 100]} />
-
-          <Tooltip formatter={(value) => `${value}%`} />
-
-          <Bar dataKey="accuracy" />
-        </BarChart>
-      </ResponsiveContainer>
-
-      <div className="chart-note">
-        XGBoost accuracy shown here is the trained model's test accuracy.
-        The other comparison values are reference values and should be
-        replaced with measured results if you train those models.
-      </div>
+    <div className="info-row">
+      <span>{label}</span>
+      <b>{value}</b>
     </div>
   );
 }
 
-/* =========================================================
-   PROTECTED ROUTE
-========================================================= */
-
-function UserRoute({ children }) {
+function ProtectedUser({ children }) {
   return getUser() ? children : <Navigate to="/login" replace />;
 }
 
-function AdminRoute({ children }) {
+function ProtectedAdmin({ children }) {
   return getAdmin() ? children : <Navigate to="/admin-login" replace />;
 }
 
-/* =========================================================
-   APP
-========================================================= */
-
-export default function App() {
+function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
+      <Routes>
+        <Route path="/" element={<Home />} />
 
-          <Route path="/login" element={<Login />} />
+        <Route
+          path="/login"
+          element={getUser() ? <Navigate to="/dashboard" /> : <Login />}
+        />
 
-          <Route path="/register" element={<Register />} />
+        <Route
+          path="/register"
+          element={getUser() ? <Navigate to="/dashboard" /> : <Register />}
+        />
 
-          <Route path="/admin-login" element={<AdminLogin />} />
+        <Route path="/admin-login" element={<AdminLogin />} />
 
-          <Route
-            path="/dashboard"
-            element={
-              <UserRoute>
-                <UserDashboard />
-              </UserRoute>
-            }
-          />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedUser>
+              <UserDashboard />
+            </ProtectedUser>
+          }
+        />
 
-          <Route
-            path="/prediction"
-            element={
-              <UserRoute>
-                <PredictionPage />
-              </UserRoute>
-            }
-          />
+        <Route
+          path="/predict"
+          element={
+            <ProtectedUser>
+              <Predict />
+            </ProtectedUser>
+          }
+        />
 
-          <Route
-            path="/results"
-            element={
-              <UserRoute>
-                <ResultsPage />
-              </UserRoute>
-            }
-          />
+        <Route
+          path="/results"
+          element={
+            <ProtectedUser>
+              <Results />
+            </ProtectedUser>
+          }
+        />
 
-          <Route
-            path="/history"
-            element={
-              <UserRoute>
-                <UserHistory />
-              </UserRoute>
-            }
-          />
+        <Route
+          path="/history"
+          element={
+            <ProtectedUser>
+              <History />
+            </ProtectedUser>
+          }
+        />
 
-          <Route
-            path="/admin"
-            element={
-              <AdminRoute>
-                <AdminDashboard />
-              </AdminRoute>
-            }
-          />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedAdmin>
+              <AdminDashboard />
+            </ProtectedAdmin>
+          }
+        />
 
-          <Route
-            path="*"
-            element={<Navigate to="/" replace />}
-          />
-        </Routes>
-      </Layout>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </BrowserRouter>
   );
 }
+
+export default App;
