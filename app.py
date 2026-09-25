@@ -1,64 +1,114 @@
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
 import joblib
 import pandas as pd
 import shap
 import dice_ml
+import json
+
+from auth import router as auth_router
+from database import save_prediction
+
+
+# ==================================================
+# FASTAPI APP
+# ==================================================
 
 app = FastAPI(
-
     title="Thyroid Disease Prediction API",
     description="ML-based thyroid prediction with SHAP and DiCE",
-    version="1.0.0"
+    version="2.0.0"
 )
 
-# Allow React frontend to communicate with this API
+
+# ==================================================
+# CORS
+# ==================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
-# --------------------------------------------------
-# Load model
-# --------------------------------------------------
+
+# ==================================================
+# AUTHENTICATION ROUTES
+# ==================================================
+
+app.include_router(auth_router)
+
+
+# ==================================================
+# LOAD MODEL
+# ==================================================
 
 model = joblib.load("thyroid_xgboost_model.pkl")
 
-# SHAP
+# SHAP explainer
 explainer = shap.TreeExplainer(model)
 
-# --------------------------------------------------
-# Features
-# --------------------------------------------------
+
+# ==================================================
+# FEATURES
+# ==================================================
 
 FEATURES = [
-    'age', 'sex', 'on thyroxine', 'query on thyroxine',
-    'on antithyroid medication', 'sick', 'pregnant',
-    'thyroid surgery', 'I131 treatment', 'query hypothyroid',
-    'query hyperthyroid', 'lithium', 'goitre', 'tumor',
-    'hypopituitary', 'psych', 'TSH measured', 'TSH',
-    'T3 measured', 'TT4 measured', 'TT4', 'T4U measured',
-    'T4U', 'FTI measured', 'FTI'
+    "age",
+    "sex",
+    "on thyroxine",
+    "query on thyroxine",
+    "on antithyroid medication",
+    "sick",
+    "pregnant",
+    "thyroid surgery",
+    "I131 treatment",
+    "query hypothyroid",
+    "query hyperthyroid",
+    "lithium",
+    "goitre",
+    "tumor",
+    "hypopituitary",
+    "psych",
+    "TSH measured",
+    "TSH",
+    "T3 measured",
+    "TT4 measured",
+    "TT4",
+    "T4U measured",
+    "T4U",
+    "FTI measured",
+    "FTI"
 ]
+
 
 CONTINUOUS_FEATURES = [
-    'age', 'TSH', 'TT4', 'T4U', 'FTI'
+    "age",
+    "TSH",
+    "TT4",
+    "T4U",
+    "FTI"
 ]
 
+
 CATEGORICAL_FEATURES = [
-    col for col in FEATURES
+    col
+    for col in FEATURES
     if col not in CONTINUOUS_FEATURES
 ]
 
-# --------------------------------------------------
-# DiCE training data
-# --------------------------------------------------
 
-dice_data_df = pd.read_csv("dice_training_data.csv")
+# ==================================================
+# DICE TRAINING DATA
+# ==================================================
+
+dice_data_df = pd.read_csv(
+    "dice_training_data.csv"
+)
+
 
 dice_data = dice_ml.Data(
     dataframe=dice_data_df,
@@ -68,9 +118,9 @@ dice_data = dice_ml.Data(
 )
 
 
-# --------------------------------------------------
-# Numeric model wrapper
-# --------------------------------------------------
+# ==================================================
+# NUMERIC MODEL WRAPPER
+# ==================================================
 
 class NumericModelWrapper:
 
@@ -112,11 +162,13 @@ wrapped_model = NumericModelWrapper(
     FEATURES
 )
 
+
 dice_model = dice_ml.Model(
     model=wrapped_model,
     backend="sklearn",
     model_type="classifier"
 )
+
 
 dice_exp = dice_ml.Dice(
     dice_data,
@@ -124,11 +176,13 @@ dice_exp = dice_ml.Dice(
     method="genetic"
 )
 
-# --------------------------------------------------
-# Permitted ranges
-# --------------------------------------------------
+
+# ==================================================
+# PERMITTED RANGES
+# ==================================================
 
 permitted_range = {}
+
 
 for col in CATEGORICAL_FEATURES:
 
@@ -150,21 +204,29 @@ for col in CONTINUOUS_FEATURES:
     ]
 
 
-# --------------------------------------------------
-# Root
-# --------------------------------------------------
+# ==================================================
+# ROOT
+# ==================================================
 
 @app.get("/")
 def root():
 
     return {
-        "message": "Thyroid Disease Prediction API is running"
+        "message": "Thyroid Disease Prediction API is running",
+        "version": "2.0.0",
+        "features": [
+            "Prediction",
+            "SHAP",
+            "DiCE",
+            "User Authentication",
+            "User History"
+        ]
     }
 
 
-# --------------------------------------------------
-# Health
-# --------------------------------------------------
+# ==================================================
+# HEALTH CHECK
+# ==================================================
 
 @app.get("/health")
 def health():
@@ -175,19 +237,26 @@ def health():
         "explainability": [
             "SHAP",
             "DiCE"
-        ]
+        ],
+        "authentication": True,
+        "user_history": True
     }
 
 
-# --------------------------------------------------
-# Prediction
-# --------------------------------------------------
+# ==================================================
+# PREDICTION
+# ==================================================
 
 @app.post("/predict")
 def predict(data: dict):
 
+    # ----------------------------------------------
+    # Check missing features
+    # ----------------------------------------------
+
     missing = [
-        f for f in FEATURES
+        f
+        for f in FEATURES
         if f not in data
     ]
 
@@ -198,40 +267,116 @@ def predict(data: dict):
             detail=f"Missing features: {missing}"
         )
 
+
+    # ----------------------------------------------
+    # Create input dataframe
+    # ----------------------------------------------
+
     input_df = pd.DataFrame(
         [[data[f] for f in FEATURES]],
         columns=FEATURES
     )
 
+
+    # ----------------------------------------------
+    # Prediction
+    # ----------------------------------------------
+
     prediction = int(
         model.predict(input_df)[0]
     )
 
+
+    # ----------------------------------------------
+    # Probabilities
+    # ----------------------------------------------
+
     probabilities = model.predict_proba(
         input_df
     )[0]
+
+
+    probability_class_0 = float(
+        probabilities[0]
+    )
+
+    probability_class_1 = float(
+        probabilities[1]
+    )
+
+
+    # ----------------------------------------------
+    # Optional user ID
+    # ----------------------------------------------
+
+    user_id = data.get("user_id")
+
+
+    # ----------------------------------------------
+    # Save prediction history
+    # ----------------------------------------------
+
+    if user_id is not None:
+
+        try:
+
+            clean_input_data = {
+                feature: data[feature]
+                for feature in FEATURES
+            }
+
+            save_prediction(
+                user_id=int(user_id),
+                prediction=prediction,
+                probability_class_0=probability_class_0,
+                probability_class_1=probability_class_1,
+                input_data=json.dumps(
+                    clean_input_data
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                "History save error:",
+                str(e)
+            )
+
+
+    # ----------------------------------------------
+    # Result
+    # ----------------------------------------------
 
     return {
 
         "prediction": prediction,
 
         "probability_class_0":
-            float(probabilities[0]),
+            probability_class_0,
 
         "probability_class_1":
-            float(probabilities[1])
+            probability_class_1,
+
+        "message":
+            (
+                "Thyroid Disease Predicted"
+                if prediction == 1
+                else
+                "Thyroid Disease Not Predicted"
+            )
     }
 
 
-# --------------------------------------------------
-# SHAP Explanation
-# --------------------------------------------------
+# ==================================================
+# SHAP EXPLANATION
+# ==================================================
 
 @app.post("/explain")
 def explain(data: dict):
 
     missing = [
-        f for f in FEATURES
+        f
+        for f in FEATURES
         if f not in data
     ]
 
@@ -242,20 +387,32 @@ def explain(data: dict):
             detail=f"Missing features: {missing}"
         )
 
+
     input_df = pd.DataFrame(
         [[data[f] for f in FEATURES]],
         columns=FEATURES
     )
 
-    shap_result = explainer(input_df)
+
+    # ----------------------------------------------
+    # SHAP
+    # ----------------------------------------------
+
+    shap_result = explainer(
+        input_df
+    )
+
 
     values = shap_result.values[0]
+
 
     if len(values.shape) > 1:
 
         values = values[:, -1]
 
+
     explanation = []
+
 
     for feature, value in zip(
         FEATURES,
@@ -266,34 +423,47 @@ def explain(data: dict):
 
             "feature": feature,
 
-            "shap_value": float(value),
+            "shap_value":
+                float(value),
 
             "impact":
-                "positive"
-                if value > 0
-                else "negative"
+                (
+                    "positive"
+                    if value > 0
+                    else
+                    "negative"
+                )
         })
 
 
+    # ----------------------------------------------
+    # Sort by importance
+    # ----------------------------------------------
+
     explanation.sort(
-        key=lambda x: abs(x["shap_value"]),
+        key=lambda x:
+            abs(x["shap_value"]),
         reverse=True
     )
 
+
     return {
-        "explanation": explanation[:10]
+
+        "explanation":
+            explanation[:10]
     }
 
 
-# --------------------------------------------------
-# Counterfactual Explanation
-# --------------------------------------------------
+# ==================================================
+# COUNTERFACTUAL EXPLANATION
+# ==================================================
 
 @app.post("/counterfactual")
 def counterfactual(data: dict):
 
     missing = [
-        f for f in FEATURES
+        f
+        for f in FEATURES
         if f not in data
     ]
 
@@ -304,12 +474,21 @@ def counterfactual(data: dict):
             detail=f"Missing features: {missing}"
         )
 
+
+    # ----------------------------------------------
+    # Query instance
+    # ----------------------------------------------
+
     query_instance = pd.DataFrame(
         [[data[f] for f in FEATURES]],
         columns=FEATURES
     )
 
-    # DiCE expects categorical values as strings
+
+    # ----------------------------------------------
+    # DiCE categorical values
+    # ----------------------------------------------
+
     for col in CATEGORICAL_FEATURES:
 
         query_instance[col] = (
@@ -318,12 +497,22 @@ def counterfactual(data: dict):
             .astype(str)
         )
 
+
+    # ----------------------------------------------
+    # DiCE continuous values
+    # ----------------------------------------------
+
     for col in CONTINUOUS_FEATURES:
 
         query_instance[col] = (
             query_instance[col]
             .astype(float)
         )
+
+
+    # ----------------------------------------------
+    # Generate counterfactuals
+    # ----------------------------------------------
 
     try:
 
@@ -340,16 +529,21 @@ def counterfactual(data: dict):
             permitted_range=permitted_range
         )
 
+
         cf_df = (
             result
             .cf_examples_list[0]
             .final_cfs_df
         )
 
+
         counterfactuals = (
             cf_df
-            .to_dict(orient="records")
+            .to_dict(
+                orient="records"
+            )
         )
+
 
         return {
 
@@ -357,6 +551,7 @@ def counterfactual(data: dict):
                 counterfactuals
 
         }
+
 
     except Exception as e:
 
