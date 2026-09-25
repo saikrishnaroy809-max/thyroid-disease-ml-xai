@@ -1,6 +1,7 @@
 import os
 import io
 import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -22,12 +23,25 @@ from sklearn.metrics import accuracy_score
 
 warnings.filterwarnings("ignore")
 
-app = Flask(__name__)
-CORS(app)
+# ============================================================
+# FLASK APPLICATION
+# ============================================================
 
-# --------------------------------------------------
+app = Flask(__name__)
+
+CORS(
+    app,
+    resources={
+        r"/*": {
+            "origins": "*"
+        }
+    }
+)
+
+
+# ============================================================
 # GLOBAL VARIABLES
-# --------------------------------------------------
+# ============================================================
 
 DATASET = None
 DATASET_NAME = None
@@ -45,9 +59,9 @@ Y_TRAIN = None
 Y_TEST = None
 
 
-# --------------------------------------------------
-# TARGET DETECTION
-# --------------------------------------------------
+# ============================================================
+# TARGET COLUMN NAMES
+# ============================================================
 
 TARGET_NAMES = [
     "target",
@@ -63,42 +77,48 @@ TARGET_NAMES = [
 ]
 
 
+# ============================================================
+# FIND TARGET COLUMN
+# ============================================================
+
 def find_target_column(df):
 
     columns_lower = {
-        str(col).strip().lower(): col
-        for col in df.columns
+        str(column).strip().lower(): column
+        for column in df.columns
     }
 
+    # Exact target names
     for name in TARGET_NAMES:
+
         if name in columns_lower:
             return columns_lower[name]
 
-    # Look for columns containing target-like words
-    for col in df.columns:
-        col_lower = str(col).lower()
+    # Partial target names
+    for column in df.columns:
 
-        if any(
-            word in col_lower
-            for word in [
-                "target",
-                "class",
-                "diagnos",
-                "disease",
-                "thyroid",
-                "label",
-                "output"
-            ]
-        ):
-            return col
+        column_lower = str(column).strip().lower()
 
-    # Fallback: last column
+        for word in [
+            "target",
+            "class",
+            "diagnos",
+            "disease",
+            "thyroid",
+            "label",
+            "output"
+        ]:
+
+            if word in column_lower:
+                return column
+
+    # Last column fallback
     return df.columns[-1]
 
 
-# --------------------------------------------------
+# ============================================================
 # FEATURE INFORMATION
-# --------------------------------------------------
+# ============================================================
 
 def create_feature_info(df, target):
 
@@ -117,7 +137,7 @@ def create_feature_info(df, target):
             feature_type = "categorical"
 
         result.append({
-            "name": column,
+            "name": str(column),
             "type": feature_type,
             "missing": int(series.isna().sum())
         })
@@ -125,70 +145,128 @@ def create_feature_info(df, target):
     return result
 
 
-# --------------------------------------------------
-# PREPARE DATA
-# --------------------------------------------------
+# ============================================================
+# CLEAN MISSING VALUES
+# ============================================================
+
+def clean_missing_values(df):
+
+    return df.replace(
+        [
+            "?",
+            "NA",
+            "N/A",
+            "null",
+            "NULL",
+            "None",
+            "none",
+            ""
+        ],
+        np.nan
+    )
+
+
+# ============================================================
+# PREPARE TARGET
+# ============================================================
 
 def prepare_target(y):
 
     y = y.copy()
 
-    # Convert missing values
     y = y.replace(
-        ["?", "NA", "N/A", "null", "None", ""],
+        [
+            "?",
+            "NA",
+            "N/A",
+            "null",
+            "NULL",
+            "None",
+            "none",
+            ""
+        ],
         np.nan
     )
 
+    # Remove missing target rows
     y = y.dropna()
+
+    if len(y) == 0:
+        raise ValueError(
+            "Target column contains no valid values."
+        )
 
     # Numeric target
     if pd.api.types.is_numeric_dtype(y):
-        unique = sorted(y.unique())
 
-        if len(unique) == 2:
-            mapping = {
-                unique[0]: 0,
-                unique[1]: 1
-            }
+        unique = sorted(
+            y.unique()
+        )
 
-            return y.map(mapping).astype(int)
+        if len(unique) != 2:
+
+            raise ValueError(
+                "Target column must contain exactly two classes."
+            )
+
+        mapping = {
+            unique[0]: 0,
+            unique[1]: 1
+        }
+
+        return y.map(mapping).astype(int)
 
     # Text target
-    values = y.astype(str).str.strip().str.lower()
+    values = (
+        y.astype(str)
+        .str.strip()
+        .str.lower()
+    )
 
-    unique = list(values.unique())
+    unique = list(
+        values.unique()
+    )
 
     if len(unique) != 2:
+
         raise ValueError(
-            f"Target column must contain exactly 2 classes. "
+            "Target column must contain exactly two classes. "
             f"Found: {unique}"
         )
 
-    # Prefer disease/positive class as 1
     positive_words = [
         "yes",
         "disease",
         "positive",
         "true",
+        "thyroid",
         "1",
-        "thyroid"
+        "present"
     ]
 
     mapping = {}
 
     for value in unique:
-        if any(word in value for word in positive_words):
+
+        if any(
+            word in value
+            for word in positive_words
+        ):
+
             mapping[value] = 1
 
     if len(mapping) == 1:
+
         negative = [
-            value for value in unique
+            value
+            for value in unique
             if value not in mapping
         ][0]
 
         mapping[negative] = 0
 
     else:
+
         mapping = {
             unique[0]: 0,
             unique[1]: 1
@@ -197,71 +275,153 @@ def prepare_target(y):
     return values.map(mapping).astype(int)
 
 
-# --------------------------------------------------
+# ============================================================
 # BUILD PREPROCESSOR
-# --------------------------------------------------
+# ============================================================
 
 def build_preprocessor(X):
 
-    numeric_columns = X.select_dtypes(
-        include=["number"]
-    ).columns.tolist()
-
-    categorical_columns = X.select_dtypes(
-        exclude=["number"]
-    ).columns.tolist()
-
-    numeric_pipeline = Pipeline(
-        steps=[
-            (
-                "imputer",
-                SimpleImputer(strategy="median")
-            ),
-            (
-                "scaler",
-                StandardScaler()
-            )
-        ]
+    numeric_columns = (
+        X.select_dtypes(
+            include=["number"]
+        )
+        .columns
+        .tolist()
     )
 
-    categorical_pipeline = Pipeline(
-        steps=[
-            (
-                "imputer",
-                SimpleImputer(
-                    strategy="most_frequent"
-                )
-            ),
-            (
-                "encoder",
-                OneHotEncoder(
-                    handle_unknown="ignore"
-                )
-            )
-        ]
+    categorical_columns = (
+        X.select_dtypes(
+            exclude=["number"]
+        )
+        .columns
+        .tolist()
     )
 
-    preprocessor = ColumnTransformer(
-        transformers=[
+    transformers = []
+
+    # Numeric pipeline
+    if numeric_columns:
+
+        numeric_pipeline = Pipeline(
+            steps=[
+                (
+                    "imputer",
+                    SimpleImputer(
+                        strategy="median"
+                    )
+                ),
+                (
+                    "scaler",
+                    StandardScaler()
+                )
+            ]
+        )
+
+        transformers.append(
             (
                 "numeric",
                 numeric_pipeline,
                 numeric_columns
-            ),
+            )
+        )
+
+    # Categorical pipeline
+    if categorical_columns:
+
+        categorical_pipeline = Pipeline(
+            steps=[
+                (
+                    "imputer",
+                    SimpleImputer(
+                        strategy="most_frequent"
+                    )
+                ),
+                (
+                    "encoder",
+                    OneHotEncoder(
+                        handle_unknown="ignore"
+                    )
+                )
+            ]
+        )
+
+        transformers.append(
             (
                 "categorical",
                 categorical_pipeline,
                 categorical_columns
             )
-        ]
+        )
+
+    return ColumnTransformer(
+        transformers=transformers
     )
 
-    return preprocessor
+
+# ============================================================
+# HOME / HEALTH CHECK
+# ============================================================
+
+@app.route("/", methods=["GET"])
+def home():
+
+    return jsonify({
+        "message": "ThyroAI backend is running successfully",
+        "status": "online",
+        "version": "1.0"
+    })
 
 
-# --------------------------------------------------
-# LOAD DATASET
-# --------------------------------------------------
+# ============================================================
+# STATUS
+# ============================================================
+
+@app.route("/api/status", methods=["GET"])
+def status():
+
+    dataset_info = None
+
+    if DATASET is not None:
+
+        dataset_info = {
+            "name": DATASET_NAME,
+            "rows": int(
+                DATASET.shape[0]
+            ),
+            "columns": int(
+                DATASET.shape[1]
+            ),
+            "features": len(
+                FEATURE_COLUMNS
+            ),
+            "target": TARGET_COLUMN
+        }
+
+    models = []
+
+    for name, accuracy in MODEL_RESULTS.items():
+
+        models.append({
+            "name": name,
+            "accuracy": float(accuracy)
+        })
+
+    return jsonify({
+
+        "status": "online",
+
+        "dataset": dataset_info,
+
+        "features": FEATURE_INFO,
+
+        "models": models
+
+    })
+
+
+# ============================================================
+# UPLOAD DATASET
+# ============================================================
 
 @app.route("/api/upload", methods=["POST"])
 def upload_dataset():
@@ -273,20 +433,23 @@ def upload_dataset():
     global FEATURE_INFO
 
     if "file" not in request.files:
+
         return jsonify({
-            "error": "No file uploaded"
+            "error": "No file uploaded."
         }), 400
 
     file = request.files["file"]
 
     if file.filename == "":
+
         return jsonify({
-            "error": "No file selected"
+            "error": "No file selected."
         }), 400
 
     if not file.filename.lower().endswith(".csv"):
+
         return jsonify({
-            "error": "Only CSV files are supported"
+            "error": "Only CSV files are supported."
         }), 400
 
     try:
@@ -298,44 +461,69 @@ def upload_dataset():
         )
 
         if df.empty:
+
             return jsonify({
-                "error": "Dataset is empty"
+                "error": "Dataset is empty."
             }), 400
 
         # Clean column names
         df.columns = [
-            str(col).strip()
-            for col in df.columns
+            str(column).strip()
+            for column in df.columns
         ]
 
+        # Store dataset
         DATASET = df
         DATASET_NAME = file.filename
 
-        TARGET_COLUMN = find_target_column(df)
+        # Detect target
+        TARGET_COLUMN = find_target_column(
+            df
+        )
 
+        # Features
         FEATURE_COLUMNS = [
-            col
-            for col in df.columns
-            if col != TARGET_COLUMN
+            column
+            for column in df.columns
+            if column != TARGET_COLUMN
         ]
 
+        # Feature metadata
         FEATURE_INFO = create_feature_info(
             df,
             TARGET_COLUMN
         )
 
+        # Reset trained models
+        MODELS.clear()
+        MODEL_RESULTS.clear()
+
         return jsonify({
-            "message": "Dataset uploaded successfully",
+
+            "message":
+                "Dataset uploaded successfully.",
 
             "dataset": {
-                "name": DATASET_NAME,
-                "rows": int(df.shape[0]),
-                "columns": int(df.shape[1]),
-                "features": len(FEATURE_COLUMNS),
-                "target": TARGET_COLUMN
+
+                "name":
+                    DATASET_NAME,
+
+                "rows":
+                    int(df.shape[0]),
+
+                "columns":
+                    int(df.shape[1]),
+
+                "features":
+                    len(FEATURE_COLUMNS),
+
+                "target":
+                    TARGET_COLUMN
             },
 
-            "features": FEATURE_INFO
+            "features":
+                FEATURE_INFO
+
         })
 
     except Exception as e:
@@ -345,30 +533,36 @@ def upload_dataset():
         }), 500
 
 
-# --------------------------------------------------
-# PREPROCESS
-# --------------------------------------------------
+# ============================================================
+# PREPROCESS DATASET
+# ============================================================
 
 @app.route("/api/preprocess", methods=["POST"])
 def preprocess_dataset():
 
     global DATASET
+    global TARGET_COLUMN
+    global FEATURE_COLUMNS
+    global FEATURE_INFO
 
     if DATASET is None:
+
         return jsonify({
-            "error": "Upload a dataset first"
+            "error":
+                "Upload a dataset first."
         }), 400
 
     try:
 
-        original_rows = len(DATASET)
+        original_rows = len(
+            DATASET
+        )
 
         df = DATASET.copy()
 
-        # Replace common missing markers
-        df = df.replace(
-            ["?", "NA", "N/A", "null", "None", ""],
-            np.nan
+        # Replace missing markers
+        df = clean_missing_values(
+            df
         )
 
         # Remove completely empty columns
@@ -382,18 +576,49 @@ def preprocess_dataset():
 
         DATASET = df
 
+        # Re-detect target
+        if (
+            TARGET_COLUMN not in df.columns
+        ):
+
+            TARGET_COLUMN = find_target_column(
+                df
+            )
+
+        FEATURE_COLUMNS = [
+            column
+            for column in df.columns
+            if column != TARGET_COLUMN
+        ]
+
+        FEATURE_INFO = create_feature_info(
+            df,
+            TARGET_COLUMN
+        )
+
         missing_values = int(
-            df.isna().sum().sum()
+            df.isna()
+            .sum()
+            .sum()
         )
 
         return jsonify({
-            "message": "Preprocessing completed",
 
-            "original_rows": original_rows,
+            "message":
+                "Preprocessing completed.",
 
-            "final_rows": int(len(df)),
+            "original_rows":
+                original_rows,
 
-            "missing_values": missing_values
+            "final_rows":
+                int(len(df)),
+
+            "missing_values":
+                missing_values,
+
+            "features":
+                FEATURE_INFO
+
         })
 
     except Exception as e:
@@ -403,23 +628,26 @@ def preprocess_dataset():
         }), 500
 
 
-# --------------------------------------------------
+# ============================================================
 # TRAIN MODELS
-# --------------------------------------------------
+# ============================================================
 
 @app.route("/api/train", methods=["POST"])
 def train_models():
 
     global MODELS
     global MODEL_RESULTS
+
     global X_TRAIN
     global X_TEST
     global Y_TRAIN
     global Y_TEST
 
     if DATASET is None:
+
         return jsonify({
-            "error": "Upload a dataset first"
+            "error":
+                "Upload a dataset first."
         }), 400
 
     try:
@@ -427,38 +655,53 @@ def train_models():
         df = DATASET.copy()
 
         if TARGET_COLUMN not in df.columns:
+
             return jsonify({
-                "error": "Target column not found"
+                "error":
+                    "Target column not found."
             }), 400
 
+        # Split X and y
         X = df.drop(
-            columns=[TARGET_COLUMN]
+            columns=[
+                TARGET_COLUMN
+            ]
         )
 
         y = prepare_target(
             df[TARGET_COLUMN]
         )
 
-        # Align X with valid target rows
-        valid_indices = y.index
-
-        X = X.loc[valid_indices]
+        # Align features with target
+        X = X.loc[
+            y.index
+        ]
 
         if len(y.unique()) != 2:
+
             return jsonify({
-                "error": "The target must contain exactly two classes"
+                "error":
+                    "Target must contain exactly two classes."
             }), 400
 
+        # Train / test split
         X_TRAIN, X_TEST, Y_TRAIN, Y_TEST = train_test_split(
+
             X,
             y,
+
             test_size=0.20,
+
             random_state=42,
+
             stratify=y
         )
 
-        preprocessor = build_preprocessor(X)
+        preprocessor = build_preprocessor(
+            X
+        )
 
+        # Models
         algorithms = {
 
             "Logistic Regression":
@@ -488,14 +731,17 @@ def train_models():
 
         results = []
 
+        # Train each model
         for name, algorithm in algorithms.items():
 
             pipeline = Pipeline(
                 steps=[
+
                     (
                         "preprocessor",
                         preprocessor
                     ),
+
                     (
                         "model",
                         algorithm
@@ -524,13 +770,30 @@ def train_models():
             )
 
             results.append({
-                "name": name,
-                "accuracy": float(accuracy)
+
+                "name":
+                    name,
+
+                "accuracy":
+                    float(accuracy)
+
             })
 
+        # Sort results
+        results.sort(
+            key=lambda item:
+                item["accuracy"],
+            reverse=True
+        )
+
         return jsonify({
-            "message": "Models trained successfully",
-            "models": results
+
+            "message":
+                "Models trained successfully.",
+
+            "models":
+                results
+
         })
 
     except Exception as e:
@@ -540,34 +803,48 @@ def train_models():
         }), 500
 
 
-# --------------------------------------------------
+# ============================================================
 # PREDICTION
-# --------------------------------------------------
+# ============================================================
 
 @app.route("/api/predict", methods=["POST"])
 def predict():
 
     if not MODELS:
+
         return jsonify({
-            "error": "Train the models first"
+            "error":
+                "Train the models first."
         }), 400
 
     try:
 
-        data = request.get_json()
+        data = request.get_json(
+            silent=True
+        )
 
         if not data:
+
             return jsonify({
-                "error": "No input data received"
+                "error":
+                    "No input data received."
             }), 400
 
         row = {}
 
+        # Build row according to
+        # dataset feature columns
         for feature in FEATURE_COLUMNS:
 
-            value = data.get(feature)
+            value = data.get(
+                feature
+            )
 
-            if value is None or value == "":
+            if (
+                value is None
+                or value == ""
+            ):
+
                 value = np.nan
 
             row[feature] = value
@@ -576,7 +853,7 @@ def predict():
             [row]
         )
 
-        # Convert numeric columns
+        # Convert numeric features
         for feature in FEATURE_INFO:
 
             name = feature["name"]
@@ -588,7 +865,7 @@ def predict():
                     errors="coerce"
                 )
 
-        # Select model with highest test accuracy
+        # Select best model
         best_model_name = max(
             MODEL_RESULTS,
             key=MODEL_RESULTS.get
@@ -598,10 +875,14 @@ def predict():
             best_model_name
         ]
 
+        # Prediction
         prediction = int(
-            model.predict(input_df)[0]
+            model.predict(
+                input_df
+            )[0]
         )
 
+        # Probability
         probability = None
 
         if hasattr(
@@ -614,43 +895,51 @@ def predict():
             )[0]
 
             if len(probabilities) > 1:
+
                 probability = float(
                     probabilities[1]
                 )
 
+        # Explanation
         if prediction == 1:
 
             explanation = (
                 f"The selected model "
-                f"({best_model_name}) classified "
-                f"this input as Class 1. "
-                f"Class 1 represents the positive "
-                f"class in the trained dataset."
+                f"({best_model_name}) "
+                f"classified this input "
+                f"as Class 1."
             )
 
         else:
 
             explanation = (
                 f"The selected model "
-                f"({best_model_name}) classified "
-                f"this input as Class 0. "
-                f"Class 0 represents the negative "
-                f"class in the trained dataset."
+                f"({best_model_name}) "
+                f"classified this input "
+                f"as Class 0."
             )
 
         return jsonify({
 
-            "prediction": prediction,
+            "prediction":
+                prediction,
 
-            "probability": probability,
+            "probability":
+                probability,
 
-            "model": best_model_name,
+            "model":
+                best_model_name,
 
-            "accuracy": MODEL_RESULTS[
-                best_model_name
-            ],
+            "accuracy":
+                float(
+                    MODEL_RESULTS[
+                        best_model_name
+                    ]
+                ),
 
-            "explanation": explanation
+            "explanation":
+                explanation
+
         })
 
     except Exception as e:
@@ -660,74 +949,62 @@ def predict():
         }), 500
 
 
-# --------------------------------------------------
-# STATUS
-# --------------------------------------------------
+# ============================================================
+# RESET
+# ============================================================
 
-@app.route("/api/status", methods=["GET"])
-def status():
+@app.route("/api/reset", methods=["POST"])
+def reset():
 
-    dataset_info = None
+    global DATASET
+    global DATASET_NAME
+    global TARGET_COLUMN
+    global FEATURE_COLUMNS
+    global FEATURE_INFO
+    global MODELS
+    global MODEL_RESULTS
 
-    if DATASET is not None:
+    DATASET = None
+    DATASET_NAME = None
+    TARGET_COLUMN = None
 
-        dataset_info = {
+    FEATURE_COLUMNS = []
+    FEATURE_INFO = []
 
-            "name": DATASET_NAME,
-
-            "rows": int(
-                DATASET.shape[0]
-            ),
-
-            "columns": int(
-                DATASET.shape[1]
-            ),
-
-            "features": len(
-                FEATURE_COLUMNS
-            ),
-
-            "target": TARGET_COLUMN
-        }
-
-    models = []
-
-    for name, accuracy in MODEL_RESULTS.items():
-
-        models.append({
-            "name": name,
-            "accuracy": accuracy
-        })
-
-    return jsonify({
-
-        "status": "online",
-
-        "dataset": dataset_info,
-
-        "features": FEATURE_INFO,
-
-        "models": models
-    })
-
-
-# --------------------------------------------------
-# HEALTH CHECK
-# --------------------------------------------------
-
-@app.route("/", methods=["GET"])
-def home():
+    MODELS = {}
+    MODEL_RESULTS = {}
 
     return jsonify({
         "message":
-            "ThyroAI backend is running successfully",
-        "status": "online"
+            "Backend state reset successfully."
     })
 
 
-# --------------------------------------------------
-# RUN
-# --------------------------------------------------
+# ============================================================
+# ERROR HANDLER
+# ============================================================
+
+@app.errorhandler(404)
+def not_found(error):
+
+    return jsonify({
+        "error":
+            "Endpoint not found."
+    }), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+
+    return jsonify({
+        "error":
+            "Internal server error."
+    }), 500
+
+
+# ============================================================
+# RUN SERVER
+# ============================================================
 
 if __name__ == "__main__":
 
@@ -742,4 +1019,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         debug=False
-    )
+        )
