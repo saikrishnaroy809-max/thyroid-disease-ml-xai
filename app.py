@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 import joblib
@@ -6,6 +6,8 @@ import pandas as pd
 import shap
 import dice_ml
 import json
+import os
+import shutil
 
 from auth import router as auth_router
 from database import save_prediction
@@ -17,8 +19,8 @@ from database import save_prediction
 
 app = FastAPI(
     title="Thyroid Disease Prediction API",
-    description="ML-based thyroid prediction with SHAP and DiCE",
-    version="2.0.0"
+    description="ML-based thyroid prediction with SHAP, DiCE and Admin Dashboard",
+    version="3.0.0"
 )
 
 
@@ -213,13 +215,14 @@ def root():
 
     return {
         "message": "Thyroid Disease Prediction API is running",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "features": [
             "Prediction",
             "SHAP",
             "DiCE",
             "User Authentication",
-            "User History"
+            "User History",
+            "Admin Dataset Upload"
         ]
     }
 
@@ -239,7 +242,8 @@ def health():
             "DiCE"
         ],
         "authentication": True,
-        "user_history": True
+        "user_history": True,
+        "admin_dataset_upload": True
     }
 
 
@@ -430,8 +434,7 @@ def explain(data: dict):
                 (
                     "positive"
                     if value > 0
-                    else
-                    "negative"
+                    else "negative"
                 )
         })
 
@@ -559,3 +562,114 @@ def counterfactual(data: dict):
             status_code=500,
             detail=str(e)
         )
+
+
+# ==================================================
+# ADMIN - DATASET UPLOAD
+# ==================================================
+
+@app.post("/admin/upload-dataset")
+async def upload_dataset(
+    file: UploadFile = File(...)
+):
+
+    # ----------------------------------------------
+    # Check file
+    # ----------------------------------------------
+
+    if not file.filename:
+
+        raise HTTPException(
+            status_code=400,
+            detail="No file selected"
+        )
+
+
+    # ----------------------------------------------
+    # Only CSV allowed
+    # ----------------------------------------------
+
+    if not file.filename.lower().endswith(".csv"):
+
+        raise HTTPException(
+            status_code=400,
+            detail="Only CSV files are allowed"
+        )
+
+
+    # ----------------------------------------------
+    # Create uploads directory
+    # ----------------------------------------------
+
+    os.makedirs(
+        "uploads",
+        exist_ok=True
+    )
+
+
+    # ----------------------------------------------
+    # Save uploaded file
+    # ----------------------------------------------
+
+    file_path = os.path.join(
+        "uploads",
+        "admin_dataset.csv"
+    )
+
+
+    try:
+
+        with open(
+            file_path,
+            "wb"
+        ) as buffer:
+
+            shutil.copyfileobj(
+                file.file,
+                buffer
+            )
+
+
+        # ------------------------------------------
+        # Read uploaded dataset
+        # ------------------------------------------
+
+        df = pd.read_csv(
+            file_path
+        )
+
+
+        # ------------------------------------------
+        # Return dataset information
+        # ------------------------------------------
+
+        return {
+
+            "message":
+                "Dataset uploaded successfully",
+
+            "filename":
+                file.filename,
+
+            "rows":
+                int(len(df)),
+
+            "columns":
+                int(len(df.columns)),
+
+            "column_names":
+                df.columns.tolist()
+        }
+
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dataset upload failed: {str(e)}"
+        )
+
+
+# ==================================================
+# END
+# ==================================================
