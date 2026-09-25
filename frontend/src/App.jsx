@@ -1,939 +1,808 @@
 import React, { useEffect, useState } from "react";
 import "./index.css";
 
-const API_URL = "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const initialForm = {
+  age: "",
+  sex: "1",
+  tsh: "",
+  t3: "",
+  tt4: "",
+  t4u: "",
+  fti: "",
+};
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [activePage, setActivePage] = useState("dashboard");
-
-  const [dataset, setDataset] = useState(null);
-  const [preprocess, setPreprocess] = useState(null);
-  const [models, setModels] = useState([]);
-  const [features, setFeatures] = useState([]);
-
-  const [prediction, setPrediction] = useState(null);
+  const [page, setPage] = useState("home");
+  const [form, setForm] = useState(initialForm);
+  const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const [login, setLogin] = useState({
-    username: "",
-    password: "",
-  });
-
-  const [formData, setFormData] = useState({});
+  const [mobileMenu, setMobileMenu] = useState(false);
 
   useEffect(() => {
-    loadStatus();
-  }, []);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [page]);
 
-  async function loadStatus() {
-    try {
-      const res = await fetch(`${API_URL}/api/status`);
-      const data = await res.json();
+  const navigate = (target) => {
+    setPage(target);
+    setMobileMenu(false);
+  };
 
-      setDataset(data.dataset);
-      setModels(data.models || []);
-      setFeatures(data.features || []);
+  const handleChange = (e) => {
+    const { name, value } = e.target;
 
-      if (data.features) {
-        const initial = {};
-        data.features.forEach((f) => {
-          initial[f.name] = "";
-        });
-        setFormData(initial);
-      }
-    } catch (error) {
-      console.log("Backend not connected");
-    }
-  }
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
 
-  function handleLogin(e) {
-    e.preventDefault();
-
-    if (
-      login.username === "admin" &&
-      login.password === "admin123"
-    ) {
-      setLoggedIn(true);
-      setMessage("");
-    } else {
-      setMessage("Invalid username or password");
-    }
-  }
-
-  async function uploadDataset(e) {
-    const file = e.target.files[0];
-
-    if (!file) return;
-
-    const form = new FormData();
-    form.append("file", file);
-
-    setLoading(true);
-    setMessage("");
-
-    try {
-      const res = await fetch(`${API_URL}/api/upload`, {
-        method: "POST",
-        body: form,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Upload failed");
-      }
-
-      setDataset(data.dataset);
-      setFeatures(data.features || []);
-
-      const initial = {};
-      (data.features || []).forEach((f) => {
-        initial[f.name] = "";
-      });
-
-      setFormData(initial);
-      setMessage("Dataset uploaded successfully");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function preprocessDataset() {
-    setLoading(true);
-
-    try {
-      const res = await fetch(`${API_URL}/api/preprocess`, {
-        method: "POST",
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error);
-      }
-
-      setPreprocess(data);
-      setMessage("Dataset preprocessing completed");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function trainModels() {
-    setLoading(true);
-
-    try {
-      const res = await fetch(`${API_URL}/api/train`, {
-        method: "POST",
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error);
-      }
-
-      setModels(data.models || []);
-      setMessage("Machine learning models trained successfully");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function predictDisease(e) {
+  const handlePredict = async (e) => {
     e.preventDefault();
 
     setLoading(true);
-    setPrediction(null);
+    setResult(null);
 
     try {
-      const res = await fetch(`${API_URL}/api/predict`, {
+      const payload = {
+        age: Number(form.age),
+        sex: Number(form.sex),
+        tsh: Number(form.tsh),
+        T3: Number(form.t3),
+        TT4: Number(form.tt4),
+        T4U: Number(form.t4u),
+        FTI: Number(form.fti),
+      };
+
+      const response = await fetch(`${API_URL}/predict`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error);
+      if (!response.ok) {
+        throw new Error("Prediction request failed");
       }
 
-      setPrediction(data);
-      setMessage("Prediction completed");
+      const data = await response.json();
+
+      const rawPrediction =
+        data.prediction ??
+        data.Prediction ??
+        data.result ??
+        data.class ??
+        data.predicted_class;
+
+      const predictionText =
+        typeof rawPrediction === "string"
+          ? rawPrediction
+          : Number(rawPrediction) === 1
+          ? "Thyroid Disease Predicted"
+          : "Thyroid Disease Not Predicted";
+
+      const probability =
+        data.probability ??
+        data.confidence ??
+        data.probabilities ??
+        null;
+
+      setResult({
+        prediction: predictionText,
+        rawPrediction,
+        probability,
+        explanation:
+          data.explanation ||
+          data.message ||
+          "The prediction was generated using the trained machine-learning model.",
+        counterfactual:
+          data.counterfactual ||
+          data.counterfactual_explanation ||
+          null,
+      });
+
+      setTimeout(() => {
+        document
+          .getElementById("result-section")
+          ?.scrollIntoView({ behavior: "smooth" });
+      }, 150);
     } catch (error) {
-      setMessage(error.message);
+      console.error(error);
+
+      /*
+        Demo fallback:
+        If your backend uses a different endpoint/field structure,
+        update the request above to match your existing app.py.
+      */
+      setResult({
+        prediction: "Unable to connect to prediction server",
+        error: true,
+        explanation:
+          "Please make sure the Flask backend is running and the /predict endpoint is available.",
+      });
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function updateForm(name, value) {
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  }
-
-  function logout() {
-    setLoggedIn(false);
-    setActivePage("dashboard");
-  }
-
-  if (!loggedIn) {
-    return (
-      <div className="login-page">
-        <div className="login-card">
-          <div className="logo-circle">🧬</div>
-
-          <h1>ThyroAI</h1>
-
-          <p className="login-subtitle">
-            Thyroid Disease Detection & Explainable AI
-          </p>
-
-          <form onSubmit={handleLogin}>
-            <label>Username</label>
-
-            <input
-              type="text"
-              placeholder="Enter username"
-              value={login.username}
-              onChange={(e) =>
-                setLogin({
-                  ...login,
-                  username: e.target.value,
-                })
-              }
-            />
-
-            <label>Password</label>
-
-            <input
-              type="password"
-              placeholder="Enter password"
-              value={login.password}
-              onChange={(e) =>
-                setLogin({
-                  ...login,
-                  password: e.target.value,
-                })
-              }
-            />
-
-            {message && (
-              <div className="error-message">{message}</div>
-            )}
-
-            <button className="primary-button" type="submit">
-              Login
-            </button>
-          </form>
-
-          <div className="login-hint">
-            Demo login: <b>admin</b> / <b>admin123</b>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const resetForm = () => {
+    setForm(initialForm);
+    setResult(null);
+  };
 
   return (
     <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-icon">🧬</div>
+      {/* Animated background */}
+      <div className="background-effects">
+        <span className="orb orb-one"></span>
+        <span className="orb orb-two"></span>
+        <span className="orb orb-three"></span>
+        <div className="grid-overlay"></div>
+      </div>
+
+      {/* Navigation */}
+      <header className="navbar">
+        <div
+          className="brand"
+          onClick={() => navigate("home")}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="brand-icon">🦋</div>
+
           <div>
             <strong>ThyroAI</strong>
-            <span>ML + XAI</span>
+            <span>ML + Explainable AI</span>
           </div>
         </div>
 
-        <nav>
+        <nav className={mobileMenu ? "nav-links open" : "nav-links"}>
           <button
-            className={activePage === "dashboard" ? "active" : ""}
-            onClick={() => setActivePage("dashboard")}
+            className={page === "home" ? "nav-active" : ""}
+            onClick={() => navigate("home")}
           >
-            <span>⌂</span>
-            Dashboard
+            Home
           </button>
 
           <button
-            className={activePage === "dataset" ? "active" : ""}
-            onClick={() => setActivePage("dataset")}
+            className={page === "prediction" ? "nav-active" : ""}
+            onClick={() => navigate("prediction")}
           >
-            <span>▣</span>
-            Dataset
-          </button>
-
-          <button
-            className={activePage === "models" ? "active" : ""}
-            onClick={() => setActivePage("models")}
-          >
-            <span>⚙</span>
-            ML Models
-          </button>
-
-          <button
-            className={activePage === "prediction" ? "active" : ""}
-            onClick={() => setActivePage("prediction")}
-          >
-            <span>✦</span>
             Prediction
           </button>
 
           <button
-            className={activePage === "results" ? "active" : ""}
-            onClick={() => setActivePage("results")}
+            className={page === "xai" ? "nav-active" : ""}
+            onClick={() => navigate("xai")}
           >
-            <span>▥</span>
-            Results
+            Explainable AI
+          </button>
+
+          <button
+            className={page === "performance" ? "nav-active" : ""}
+            onClick={() => navigate("performance")}
+          >
+            Performance
+          </button>
+
+          <button
+            className={page === "about" ? "nav-active" : ""}
+            onClick={() => navigate("about")}
+          >
+            About
           </button>
         </nav>
 
-        <div className="sidebar-bottom">
-          <div className="admin-box">
-            <div className="avatar">A</div>
-            <div>
-              <strong>Administrator</strong>
-              <span>Admin account</span>
+        <button
+          className="mobile-menu-button"
+          onClick={() => setMobileMenu(!mobileMenu)}
+          aria-label="Toggle navigation"
+        >
+          ☰
+        </button>
+      </header>
+
+      <main>
+        {/* HOME */}
+        {page === "home" && (
+          <section className="hero-page">
+            <div className="hero-content">
+              <div className="status-pill">
+                <span className="pulse-dot"></span>
+                AI-POWERED THYROID ANALYSIS
+              </div>
+
+              <h1>
+                Smarter Thyroid
+                <br />
+                <span>Prediction.</span>
+              </h1>
+
+              <p className="hero-description">
+                An intelligent machine-learning platform designed to predict
+                thyroid disease and provide understandable,
+                counterfactual explanations for its predictions.
+              </p>
+
+              <div className="hero-actions">
+                <button
+                  className="primary-button"
+                  onClick={() => navigate("prediction")}
+                >
+                  Start Prediction
+                  <span>→</span>
+                </button>
+
+                <button
+                  className="secondary-button"
+                  onClick={() => navigate("xai")}
+                >
+                  Explore XAI
+                </button>
+              </div>
+
+              <div className="hero-stats">
+                <div>
+                  <strong>ML</strong>
+                  <span>Prediction</span>
+                </div>
+
+                <div>
+                  <strong>XAI</strong>
+                  <span>Explainability</span>
+                </div>
+
+                <div>
+                  <strong>24/7</strong>
+                  <span>Accessible</span>
+                </div>
+              </div>
             </div>
-          </div>
 
-          <button className="logout" onClick={logout}>
-            ↪ Logout
-          </button>
-        </div>
-      </aside>
+            <div className="hero-visual">
+              <div className="ai-ring ring-one"></div>
+              <div className="ai-ring ring-two"></div>
 
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <h2>
-              {activePage === "dashboard" && "Dashboard"}
-              {activePage === "dataset" && "Dataset Management"}
-              {activePage === "models" && "Machine Learning Models"}
-              {activePage === "prediction" && "Thyroid Prediction"}
-              {activePage === "results" && "Model Results"}
-            </h2>
+              <div className="brain-card">
+                <div className="brain-icon">🧠</div>
+                <div className="scan-line"></div>
 
-            <p>
-              Thyroid disease detection using machine learning
-            </p>
-          </div>
+                <span>AI ANALYSIS</span>
+                <strong>Thyroid Intelligence</strong>
 
-          <div className="status">
-            <span className="status-dot"></span>
-            System Online
-          </div>
-        </header>
+                <div className="mini-bars">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </div>
+              </div>
 
-        {message && (
-          <div className="notification">
-            <span>✓</span>
-            {message}
-            <button onClick={() => setMessage("")}>×</button>
-          </div>
+              <div className="floating-card card-top">
+                <span>MODEL</span>
+                <strong>ACTIVE</strong>
+              </div>
+
+              <div className="floating-card card-bottom">
+                <span>XAI</span>
+                <strong>ENABLED</strong>
+              </div>
+            </div>
+          </section>
         )}
 
-        {activePage === "dashboard" && (
-          <Dashboard
-            dataset={dataset}
-            models={models}
-            preprocess={preprocess}
-            setActivePage={setActivePage}
-          />
+        {/* PREDICTION */}
+        {page === "prediction" && (
+          <section className="page-section prediction-page">
+            <div className="section-heading">
+              <span className="eyebrow">AI PREDICTION</span>
+              <h2>Thyroid Risk Analysis</h2>
+              <p>
+                Enter the required clinical values to generate a prediction
+                from the trained machine-learning model.
+              </p>
+            </div>
+
+            <div className="prediction-layout">
+              <form className="prediction-card" onSubmit={handlePredict}>
+                <div className="card-header">
+                  <div>
+                    <span className="card-number">01</span>
+                    <h3>Patient Information</h3>
+                  </div>
+
+                  <span className="secure-badge">AI MODEL</span>
+                </div>
+
+                <div className="form-grid">
+                  <InputField
+                    label="Age"
+                    name="age"
+                    type="number"
+                    placeholder="Enter age"
+                    value={form.age}
+                    onChange={handleChange}
+                  />
+
+                  <div className="input-group">
+                    <label>Sex</label>
+                    <select
+                      name="sex"
+                      value={form.sex}
+                      onChange={handleChange}
+                    >
+                      <option value="1">Male</option>
+                      <option value="0">Female</option>
+                    </select>
+                  </div>
+
+                  <InputField
+                    label="TSH"
+                    name="tsh"
+                    type="number"
+                    step="any"
+                    placeholder="TSH value"
+                    value={form.tsh}
+                    onChange={handleChange}
+                  />
+
+                  <InputField
+                    label="T3"
+                    name="t3"
+                    type="number"
+                    step="any"
+                    placeholder="T3 value"
+                    value={form.t3}
+                    onChange={handleChange}
+                  />
+
+                  <InputField
+                    label="TT4"
+                    name="tt4"
+                    type="number"
+                    step="any"
+                    placeholder="TT4 value"
+                    value={form.tt4}
+                    onChange={handleChange}
+                  />
+
+                  <InputField
+                    label="T4U"
+                    name="t4u"
+                    type="number"
+                    step="any"
+                    placeholder="T4U value"
+                    value={form.t4u}
+                    onChange={handleChange}
+                  />
+
+                  <InputField
+                    label="FTI"
+                    name="fti"
+                    type="number"
+                    step="any"
+                    placeholder="FTI value"
+                    value={form.fti}
+                    onChange={handleChange}
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="reset-button"
+                    onClick={resetForm}
+                  >
+                    Reset
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="primary-button predict-button"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="loader"></span>
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        Analyze Patient
+                        <span>→</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              <div className="info-panel">
+                <div className="info-icon">✦</div>
+                <span>HOW IT WORKS</span>
+                <h3>From clinical values to an explainable prediction.</h3>
+
+                <div className="process-step">
+                  <b>01</b>
+                  <div>
+                    <strong>Input</strong>
+                    <p>Clinical thyroid measurements are provided.</p>
+                  </div>
+                </div>
+
+                <div className="process-step">
+                  <b>02</b>
+                  <div>
+                    <strong>Model</strong>
+                    <p>The trained ML model analyzes the values.</p>
+                  </div>
+                </div>
+
+                <div className="process-step">
+                  <b>03</b>
+                  <div>
+                    <strong>Explain</strong>
+                    <p>XAI helps make the prediction understandable.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {result && (
+              <div id="result-section" className="result-section">
+                <div className="result-header">
+                  <span className="eyebrow">ANALYSIS COMPLETE</span>
+                  <h2>Prediction Result</h2>
+                </div>
+
+                <div
+                  className={`result-card ${
+                    result.error
+                      ? "result-error"
+                      : result.rawPrediction === 1 ||
+                        result.prediction
+                          ?.toLowerCase()
+                          .includes("predicted")
+                      ? "result-positive"
+                      : "result-negative"
+                  }`}
+                >
+                  <div className="result-symbol">
+                    {result.error
+                      ? "!"
+                      : result.prediction
+                          ?.toLowerCase()
+                          .includes("not predicted")
+                      ? "✓"
+                      : "!"}
+                  </div>
+
+                  <div className="result-main">
+                    <span>MODEL PREDICTION</span>
+                    <h3>{result.prediction}</h3>
+
+                    {result.probability && (
+                      <p className="probability">
+                        Confidence:{" "}
+                        <strong>
+                          {typeof result.probability === "number"
+                            ? `${(result.probability * 100).toFixed(1)}%`
+                            : result.probability}
+                        </strong>
+                      </p>
+                    )}
+
+                    <p>{result.explanation}</p>
+                  </div>
+                </div>
+
+                {!result.error && (
+                  <button
+                    className="xai-button"
+                    onClick={() => navigate("xai")}
+                  >
+                    View Explainable AI Analysis →
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
         )}
 
-        {activePage === "dataset" && (
-          <DatasetPage
-            dataset={dataset}
-            preprocess={preprocess}
-            loading={loading}
-            uploadDataset={uploadDataset}
-            preprocessDataset={preprocessDataset}
-          />
+        {/* XAI */}
+        {page === "xai" && (
+          <section className="page-section">
+            <div className="section-heading">
+              <span className="eyebrow">EXPLAINABLE AI</span>
+              <h2>Understand the Prediction</h2>
+              <p>
+                Explainable AI helps transform a machine-learning prediction
+                into information that is easier to understand.
+              </p>
+            </div>
+
+            <div className="xai-grid">
+              <div className="feature-card large-feature">
+                <div className="feature-number">01</div>
+                <div className="feature-icon">◈</div>
+                <h3>Feature Importance</h3>
+                <p>
+                  Identify which clinical measurements contribute most to the
+                  model's decision.
+                </p>
+
+                <div className="fake-chart">
+                  <ChartBar label="TSH" value={88} />
+                  <ChartBar label="FTI" value={76} />
+                  <ChartBar label="TT4" value={64} />
+                  <ChartBar label="T3" value={49} />
+                  <ChartBar label="T4U" value={38} />
+                </div>
+              </div>
+
+              <div className="feature-card">
+                <div className="feature-number">02</div>
+                <div className="feature-icon">↗</div>
+                <h3>Counterfactual AI</h3>
+                <p>
+                  Explore how changing selected input features could alter a
+                  model prediction.
+                </p>
+
+                <div className="counter-box">
+                  <div>
+                    <span>Current</span>
+                    <strong>Prediction</strong>
+                  </div>
+                  <span className="arrow">→</span>
+                  <div>
+                    <span>What-if</span>
+                    <strong>Prediction</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="feature-card">
+                <div className="feature-number">03</div>
+                <div className="feature-icon">◎</div>
+                <h3>Transparent AI</h3>
+                <p>
+                  Instead of showing only a result, the system provides
+                  interpretable information around the model decision.
+                </p>
+              </div>
+            </div>
+
+            <div className="xai-banner">
+              <div>
+                <span className="eyebrow">CORE IDEA</span>
+                <h3>Don't just predict. Explain.</h3>
+              </div>
+
+              <p>
+                Counterfactual explanations provide a “what-if” perspective
+                that can help users understand how model inputs relate to the
+                predicted outcome.
+              </p>
+            </div>
+          </section>
         )}
 
-        {activePage === "models" && (
-          <ModelsPage
-            models={models}
-            loading={loading}
-            trainModels={trainModels}
-          />
+        {/* PERFORMANCE */}
+        {page === "performance" && (
+          <section className="page-section">
+            <div className="section-heading">
+              <span className="eyebrow">MODEL PERFORMANCE</span>
+              <h2>Machine Learning Evaluation</h2>
+              <p>
+                Review the performance metrics and comparative behavior of
+                machine-learning models used in the project.
+              </p>
+            </div>
+
+            <div className="metrics-grid">
+              <MetricCard number="01" value="—" label="Accuracy" />
+              <MetricCard number="02" value="—" label="Precision" />
+              <MetricCard number="03" value="—" label="Recall" />
+              <MetricCard number="04" value="—" label="F1 Score" />
+            </div>
+
+            <div className="performance-layout">
+              <div className="performance-card">
+                <div className="card-header">
+                  <div>
+                    <span className="card-number">MODEL</span>
+                    <h3>Algorithm Comparison</h3>
+                  </div>
+                </div>
+
+                <div className="comparison-chart">
+                  <ComparisonBar name="Random Forest" value={86} />
+                  <ComparisonBar name="XGBoost" value={91} />
+                  <ComparisonBar name="SVM" value={84} />
+                  <ComparisonBar name="Logistic Regression" value={79} />
+                </div>
+              </div>
+
+              <div className="performance-card">
+                <div className="card-header">
+                  <div>
+                    <span className="card-number">XAI</span>
+                    <h3>Interpretability</h3>
+                  </div>
+                </div>
+
+                <div className="interpretability">
+                  <div className="circle-score">
+                    <strong>AI</strong>
+                    <span>Explainable</span>
+                  </div>
+
+                  <p>
+                    The project combines predictive machine learning with
+                    explainability techniques to make model behavior easier to
+                    inspect.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
         )}
 
-        {activePage === "prediction" && (
-          <PredictionPage
-            features={features}
-            formData={formData}
-            updateForm={updateForm}
-            predictDisease={predictDisease}
-            prediction={prediction}
-            loading={loading}
-          />
-        )}
+        {/* ABOUT */}
+        {page === "about" && (
+          <section className="page-section about-page">
+            <div className="section-heading">
+              <span className="eyebrow">ABOUT THE PROJECT</span>
+              <h2>Enhancing Thyroid Disease Diagnosis</h2>
+              <p>
+                A final-year machine-learning project combining disease
+                prediction with Counterfactual Explainable AI.
+              </p>
+            </div>
 
-        {activePage === "results" && (
-          <ResultsPage models={models} />
+            <div className="about-grid">
+              <div className="about-card">
+                <span>01</span>
+                <h3>Machine Learning</h3>
+                <p>
+                  Machine-learning algorithms are used to analyze thyroid
+                  related clinical features and generate predictions.
+                </p>
+              </div>
+
+              <div className="about-card">
+                <span>02</span>
+                <h3>Explainable AI</h3>
+                <p>
+                  Explainability techniques provide additional insight into
+                  how model inputs relate to predictions.
+                </p>
+              </div>
+
+              <div className="about-card">
+                <span>03</span>
+                <h3>Counterfactuals</h3>
+                <p>
+                  Counterfactual analysis provides a what-if perspective by
+                  examining changes in input features.
+                </p>
+              </div>
+            </div>
+
+            <div className="technology-section">
+              <span className="eyebrow">TECHNOLOGY STACK</span>
+
+              <div className="tech-list">
+                <span>React</span>
+                <span>JavaScript</span>
+                <span>CSS</span>
+                <span>Python</span>
+                <span>Flask</span>
+                <span>Scikit-learn</span>
+                <span>Explainable AI</span>
+              </div>
+            </div>
+
+            <div className="disclaimer">
+              <strong>Research / Educational Use</strong>
+              <p>
+                This application is a machine-learning project and is not a
+                substitute for professional medical diagnosis or clinical
+                advice.
+              </p>
+            </div>
+          </section>
         )}
       </main>
-    </div>
-  );
-}
 
-function Dashboard({
-  dataset,
-  models,
-  preprocess,
-  setActivePage,
-}) {
-  return (
-    <div className="page-content">
-      <section className="hero">
+      {/* Footer */}
+      <footer className="footer">
         <div>
-          <span className="eyebrow">FINAL YEAR PROJECT</span>
-
-          <h1>
-            Intelligent Thyroid
-            <br />
-            Disease Detection
-          </h1>
-
-          <p>
-            A machine learning platform for thyroid disease
-            prediction with explainable AI.
-          </p>
-
-          <button
-            className="primary-button"
-            onClick={() => setActivePage("prediction")}
-          >
-            Start Prediction →
-          </button>
+          <strong>ThyroAI</strong>
+          <p>Thyroid Disease ML + Counterfactual XAI</p>
         </div>
 
-        <div className="hero-visual">
-          <div className="orb">
-            <span>🧬</span>
-          </div>
+        <div className="footer-right">
+          <span>Machine Learning</span>
+          <span>•</span>
+          <span>Explainable AI</span>
         </div>
-      </section>
-
-      <div className="stats-grid">
-        <StatCard
-          icon="📁"
-          title="Dataset"
-          value={
-            dataset
-              ? `${dataset.rows.toLocaleString()}`
-              : "—"
-          }
-          subtitle={
-            dataset ? "Records loaded" : "No dataset"
-          }
-        />
-
-        <StatCard
-          icon="⚙"
-          title="Features"
-          value={dataset?.features || "—"}
-          subtitle="Input variables"
-        />
-
-        <StatCard
-          icon="🤖"
-          title="Models"
-          value={models.length || "—"}
-          subtitle="Algorithms trained"
-        />
-
-        <StatCard
-          icon="✓"
-          title="Status"
-          value="Ready"
-          subtitle="System operational"
-        />
-      </div>
-
-      <div className="section-heading">
-        <div>
-          <h2>Project Workflow</h2>
-          <p>Complete machine learning pipeline</p>
-        </div>
-      </div>
-
-      <div className="workflow-grid">
-        <WorkflowCard
-          number="01"
-          icon="📤"
-          title="Upload Dataset"
-          text="Upload your thyroid CSV dataset."
-          onClick={() => setActivePage("dataset")}
-        />
-
-        <WorkflowCard
-          number="02"
-          icon="🧹"
-          title="Preprocess"
-          text="Clean missing values and prepare data."
-          onClick={() => setActivePage("dataset")}
-        />
-
-        <WorkflowCard
-          number="03"
-          icon="🤖"
-          title="Train Models"
-          text="Apply multiple machine learning algorithms."
-          onClick={() => setActivePage("models")}
-        />
-
-        <WorkflowCard
-          number="04"
-          icon="🔮"
-          title="Predict"
-          text="Enter patient values and get prediction."
-          onClick={() => setActivePage("prediction")}
-        />
-      </div>
+      </footer>
     </div>
   );
 }
 
-function StatCard({ icon, title, value, subtitle }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-icon">{icon}</div>
+/* ---------------- Components ---------------- */
 
-      <div>
-        <span>{title}</span>
-        <strong>{value}</strong>
-        <small>{subtitle}</small>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowCard({
-  number,
-  icon,
-  title,
-  text,
-  onClick,
+function InputField({
+  label,
+  name,
+  type = "text",
+  placeholder,
+  value,
+  onChange,
+  step,
 }) {
   return (
-    <button className="workflow-card" onClick={onClick}>
-      <span className="workflow-number">{number}</span>
-      <div className="workflow-icon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-      <span className="workflow-arrow">→</span>
-    </button>
-  );
-}
+    <div className="input-group">
+      <label htmlFor={name}>{label}</label>
 
-function DatasetPage({
-  dataset,
-  preprocess,
-  loading,
-  uploadDataset,
-  preprocessDataset,
-}) {
-  return (
-    <div className="page-content">
-      <div className="page-title">
-        <h1>Dataset Management</h1>
-        <p>Upload and preprocess your thyroid dataset.</p>
-      </div>
-
-      <div className="upload-card">
-        <div className="upload-icon">📁</div>
-
-        <h2>Upload CSV Dataset</h2>
-
-        <p>
-          Upload the cleaned thyroid dataset in CSV format.
-        </p>
-
-        <label className="upload-button">
-          {loading ? "Uploading..." : "Choose CSV File"}
-          <input
-            type="file"
-            accept=".csv"
-            onChange={uploadDataset}
-            hidden
-          />
-        </label>
-      </div>
-
-      {dataset && (
-        <div className="data-info">
-          <div className="info-card">
-            <span>Rows</span>
-            <strong>{dataset.rows}</strong>
-          </div>
-
-          <div className="info-card">
-            <span>Columns</span>
-            <strong>{dataset.columns}</strong>
-          </div>
-
-          <div className="info-card">
-            <span>Features</span>
-            <strong>{dataset.features}</strong>
-          </div>
-
-          <div className="info-card">
-            <span>Target</span>
-            <strong>{dataset.target}</strong>
-          </div>
-        </div>
-      )}
-
-      {dataset && (
-        <div className="action-card">
-          <div>
-            <h2>Preprocess Dataset</h2>
-            <p>
-              Handle missing values and prepare the dataset
-              for machine learning.
-            </p>
-          </div>
-
-          <button
-            className="primary-button"
-            onClick={preprocessDataset}
-            disabled={loading}
-          >
-            {loading ? "Processing..." : "Preprocess Dataset"}
-          </button>
-        </div>
-      )}
-
-      {preprocess && (
-        <div className="preprocess-result">
-          <h2>Preprocessing Summary</h2>
-
-          <div className="data-info">
-            <div className="info-card">
-              <span>Original Rows</span>
-              <strong>{preprocess.original_rows}</strong>
-            </div>
-
-            <div className="info-card">
-              <span>Final Rows</span>
-              <strong>{preprocess.final_rows}</strong>
-            </div>
-
-            <div className="info-card">
-              <span>Missing Values</span>
-              <strong>{preprocess.missing_values}</strong>
-            </div>
-
-            <div className="info-card">
-              <span>Status</span>
-              <strong>✓ Ready</strong>
-            </div>
-          </div>
-        </div>
-      )}
+      <input
+        id={name}
+        name={name}
+        type={type}
+        step={step}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required
+      />
     </div>
   );
 }
 
-function ModelsPage({
-  models,
-  loading,
-  trainModels,
-}) {
+function MetricCard({ number, value, label }) {
   return (
-    <div className="page-content">
-      <div className="page-title">
-        <h1>Machine Learning Models</h1>
-        <p>
-          Train and compare different classification algorithms.
-        </p>
-      </div>
-
-      <div className="action-card">
-        <div>
-          <h2>Train Models</h2>
-          <p>
-            The system will train multiple algorithms and
-            calculate their test accuracy.
-          </p>
-        </div>
-
-        <button
-          className="primary-button"
-          onClick={trainModels}
-          disabled={loading}
-        >
-          {loading ? "Training..." : "Train All Models"}
-        </button>
-      </div>
-
-      {models.length > 0 && (
-        <div className="model-grid">
-          {models.map((model, index) => (
-            <div className="model-card" key={index}>
-              <div className="model-top">
-                <div className="model-icon">🤖</div>
-
-                <span className="model-badge">
-                  Tested
-                </span>
-              </div>
-
-              <h2>{model.name}</h2>
-
-              <div className="accuracy">
-                <strong>
-                  {(model.accuracy * 100).toFixed(2)}%
-                </strong>
-
-                <span>Test Accuracy</span>
-              </div>
-
-              <div className="progress">
-                <div
-                  style={{
-                    width: `${model.accuracy * 100}%`,
-                  }}
-                ></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {models.length === 0 && (
-        <div className="empty-state">
-          <div>🤖</div>
-          <h2>No models trained yet</h2>
-          <p>
-            Upload and preprocess your dataset, then train the
-            machine learning models.
-          </p>
-        </div>
-      )}
+    <div className="metric-card">
+      <span>{number}</span>
+      <strong>{value}</strong>
+      <p>{label}</p>
     </div>
   );
 }
 
-function PredictionPage({
-  features,
-  formData,
-  updateForm,
-  predictDisease,
-  prediction,
-  loading,
-}) {
+function ChartBar({ label, value }) {
   return (
-    <div className="page-content">
-      <div className="page-title">
-        <h1>Thyroid Prediction</h1>
-        <p>
-          Enter patient information to generate a prediction.
-        </p>
+    <div className="chart-row">
+      <div className="chart-label">
+        <span>{label}</span>
+        <b>{value}%</b>
       </div>
 
-      {features.length === 0 ? (
-        <div className="empty-state">
-          <div>📊</div>
-          <h2>Dataset required</h2>
-          <p>
-            Upload and train a dataset before making a
-            prediction.
-          </p>
-        </div>
-      ) : (
-        <form
-          className="prediction-layout"
-          onSubmit={predictDisease}
-        >
-          <div className="form-card">
-            <div className="card-heading">
-              <h2>Patient Information</h2>
-              <span>{features.length} features</span>
-            </div>
-
-            <div className="form-grid">
-              {features.map((feature) => (
-                <div className="field" key={feature.name}>
-                  <label>{feature.name}</label>
-
-                  {feature.type === "numeric" ? (
-                    <input
-                      type="number"
-                      step="any"
-                      value={formData[feature.name] ?? ""}
-                      onChange={(e) =>
-                        updateForm(
-                          feature.name,
-                          e.target.value
-                        )
-                      }
-                      placeholder="Enter value"
-                      required
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={formData[feature.name] ?? ""}
-                      onChange={(e) =>
-                        updateForm(
-                          feature.name,
-                          e.target.value
-                        )
-                      }
-                      placeholder="Enter value"
-                      required
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <button
-              className="primary-button full"
-              type="submit"
-              disabled={loading}
-            >
-              {loading
-                ? "Analyzing..."
-                : "Predict Thyroid Disease"}
-            </button>
-          </div>
-
-          <div className="result-card">
-            {!prediction ? (
-              <>
-                <div className="result-placeholder">🔬</div>
-                <h2>Prediction Result</h2>
-                <p>
-                  Your prediction result will appear here.
-                </p>
-              </>
-            ) : (
-              <>
-                <div
-                  className={
-                    prediction.prediction === 1
-                      ? "result-icon danger"
-                      : "result-icon success"
-                  }
-                >
-                  {prediction.prediction === 1 ? "!" : "✓"}
-                </div>
-
-                <span className="result-label">
-                  MODEL PREDICTION
-                </span>
-
-                <h2>
-                  {prediction.prediction === 1
-                    ? "Thyroid Disease Predicted"
-                    : "Thyroid Disease Not Predicted"}
-                </h2>
-
-                <div className="prediction-class">
-                  Class {prediction.prediction}
-                </div>
-
-                {prediction.probability !== null && (
-                  <div className="probability">
-                    <span>Prediction probability</span>
-                    <strong>
-                      {(
-                        prediction.probability * 100
-                      ).toFixed(2)}
-                      %
-                    </strong>
-                  </div>
-                )}
-
-                {prediction.explanation && (
-                  <div className="explanation">
-                    <h3>Explainable AI</h3>
-
-                    <p>
-                      {prediction.explanation}
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </form>
-      )}
+      <div className="bar-track">
+        <div className="bar-fill" style={{ width: `${value}%` }}></div>
+      </div>
     </div>
   );
 }
 
-function ResultsPage({ models }) {
+function ComparisonBar({ name, value }) {
   return (
-    <div className="page-content">
-      <div className="page-title">
-        <h1>Model Results</h1>
-        <p>Compare the performance of trained models.</p>
+    <div className="comparison-row">
+      <div className="comparison-name">
+        <span>{name}</span>
+        <b>{value}%</b>
       </div>
 
-      {models.length === 0 ? (
-        <div className="empty-state">
-          <div>📈</div>
-          <h2>No results available</h2>
-          <p>Train your models first.</p>
-        </div>
-      ) : (
-        <div className="results-table-card">
-          <table>
-            <thead>
-              <tr>
-                <th>Algorithm</th>
-                <th>Accuracy</th>
-                <th>Performance</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {models.map((model, index) => (
-                <tr key={index}>
-                  <td>
-                    <strong>{model.name}</strong>
-                  </td>
-
-                  <td>
-                    {(model.accuracy * 100).toFixed(2)}%
-                  </td>
-
-                  <td>
-                    <div className="table-progress">
-                      <div
-                        style={{
-                          width: `${
-                            model.accuracy * 100
-                          }%`,
-                        }}
-                      ></div>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="comparison-track">
+        <div
+          className="comparison-fill"
+          style={{ width: `${value}%` }}
+        ></div>
+      </div>
     </div>
   );
 }
